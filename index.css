@@ -1000,7 +1000,7 @@ code, .mono {
 
 
 /* Welcome Animation  */
-/* .welcome-overlay {
+.welcome-overlay {
   position: fixed;
   top: 0;
   left: 0;
@@ -1055,4 +1055,4 @@ code, .mono {
 
 
 
-  */
+ 

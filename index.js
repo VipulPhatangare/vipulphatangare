@@ -127,31 +127,31 @@ document.addEventListener('DOMContentLoaded', function() {
 
 
 // Welcome Animation
-// document.addEventListener('DOMContentLoaded', function() {
-//     const welcomeOverlay = document.querySelector('.welcome-overlay');
-//     const welcomeText = document.querySelector('.welcome-text');
-//     const cursor = document.querySelector('.cursor');
+document.addEventListener('DOMContentLoaded', function() {
+    const welcomeOverlay = document.querySelector('.welcome-overlay');
+    const welcomeText = document.querySelector('.welcome-text');
+    const cursor = document.querySelector('.cursor');
     
-//     if (welcomeOverlay) {
-//       const text = "Explore my world!";
-//       let i = 0;
+    if (welcomeOverlay) {
+      const text = "Explore my world!";
+      let i = 0;
       
-//       function typeWriter() {
-//         if (i < text.length) {
-//           welcomeText.textContent += text.charAt(i);
-//           i++;
-//           setTimeout(typeWriter, 200);
-//         } else {
-//           cursor.style.display = 'none';
-//           setTimeout(() => {
-//             welcomeOverlay.classList.add('fade-out');
-//             setTimeout(() => {
-//               welcomeOverlay.remove();
-//             }, 1000);
-//           }, 2000);
-//         }
-//       }
+      function typeWriter() {
+        if (i < text.length) {
+          welcomeText.textContent += text.charAt(i);
+          i++;
+          setTimeout(typeWriter, 200);
+        } else {
+          cursor.style.display = 'none';
+          setTimeout(() => {
+            welcomeOverlay.classList.add('fade-out');
+            setTimeout(() => {
+              welcomeOverlay.remove();
+            }, 1000);
+          }, 2000);
+        }
+      }
       
-//       setTimeout(typeWriter, 500);
-//     }
-//   });
+      setTimeout(typeWriter, 500);
+    }
+  });
