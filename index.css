@@ -814,6 +814,7 @@ code, .mono {
     .profile-container {
         align-items: center;
         text-align: center;
+
     }
     
     .intro-text {
@@ -897,7 +898,7 @@ code, .mono {
     
     .profile-img {
         width: 240px;
-        height: 240px;
+        height: 280px;
     }
     
     .name {
