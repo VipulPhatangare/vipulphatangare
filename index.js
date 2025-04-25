@@ -148,7 +148,7 @@ document.addEventListener('DOMContentLoaded', function() {
             setTimeout(() => {
               welcomeOverlay.remove();
             }, 1000);
-          }, 2000);
+          }, 1500);
         }
       }
       
