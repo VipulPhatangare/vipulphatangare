@@ -1,5 +1,5 @@
 // Mobile menu toggle
-const menuBtn = document.getElementById('menuBtn');
+const menuBtn = document.getElementById("menuBtn");
 const sidebar = document.getElementById('sidebar');
 const mainContainer = document.getElementById('mainContainer');
 
