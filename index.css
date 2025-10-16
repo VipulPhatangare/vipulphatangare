@@ -58,7 +58,7 @@ code, .mono {
     padding: 2rem 1.5rem;
     z-index: 1000;
     border-right: 1px solid rgba(255,255,255,0.05);
-    transform: translateX(-100%);
+    transform: translateX(0);
     transition: transform 0.4s ease;
 }
 
@@ -140,7 +140,7 @@ code, .mono {
     width: 50px;
     height: 50px;
     border-radius: 50%;
-    display: flex;
+    display: none;
     align-items: center;
     justify-content: center;
     font-size: 1.2rem;
@@ -196,8 +196,11 @@ code, .mono {
 
 /* Main Content */
 .main-container {
-    margin-left: 0;
+    margin-left: 280px;
     transition: margin-left 0.4s ease;
+    width: calc(100% - 280px);
+    max-width: 100vw;
+    overflow-x: hidden;
 }
 
 .main-container.sidebar-open {
@@ -207,11 +210,14 @@ code, .mono {
 /* Home Page */
 .home {
     min-height: 100vh;
-    padding: 6rem 2rem;
+    padding: 4rem 3rem;
     display: flex;
+    flex-direction: column;
+    justify-content: center;
     align-items: center;
     position: relative;
     overflow: hidden;
+    width: 100%;
 }
 
 .home::before {
@@ -264,6 +270,7 @@ code, .mono {
 
 .intro-text {
     max-width: 500px;
+    width: 100%;
     background: radial-gradient(circle, rgba(77,142,232,0.15) 0%, rgba(15,15,21,0) 70%); 
 }
 
@@ -303,7 +310,8 @@ code, .mono {
     font-size: 1.1rem;
     margin-bottom: 2rem;
     color: rgba(240, 244, 248, 0.8);
-    max-width: 600px;
+    max-width: 100%;
+    line-height: 1.7;
 }
 
 .social-links {
@@ -390,6 +398,11 @@ code, .mono {
     display: flex;
     align-items: center;
     gap: 10px;
+    flex-wrap: nowrap;
+}
+
+.achievements h2 i {
+    flex-shrink: 0;
 }
 
 .achievements h2::before {
@@ -398,6 +411,7 @@ code, .mono {
     width: 30px;
     height: 2px;
     background: var(--primary);
+    flex-shrink: 0;
 }
 
 .achievement-item {
@@ -408,6 +422,7 @@ code, .mono {
     border-radius: 8px;
     transition: var(--transition);
     border-left: 3px solid transparent;
+    flex-direction: row;
 }
 
 .achievement-item:hover {
@@ -418,9 +433,11 @@ code, .mono {
 
 .achievement-icon {
     font-size: 1.5rem;
+    min-width: 30px;
     margin-right: 15px;
     color: var(--primary);
     margin-top: 3px;
+    flex-shrink: 0;
 }
 
 .achievement-content h3 {
@@ -436,8 +453,11 @@ code, .mono {
 
 /* Projects Page */
 .projects {
-    padding: var(--section-padding) 5%;
+    padding: 4rem 3rem;
     min-height: 100vh;
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
 }
 
 .section-header {
@@ -613,8 +633,11 @@ code, .mono {
 
 /* Research Papers Page */
 .research {
-    padding: var(--section-padding) 5%;
+    padding: 4rem 3rem;
     min-height: 100vh;
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
 }
 
 .papers-list {
@@ -693,8 +716,11 @@ code, .mono {
 
 /* Notes Page */
 .notes {
-    padding: var(--section-padding) 5%;
+    padding: 4rem 3rem;
     min-height: 100vh;
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
 }
 
 .notes-categories {
@@ -804,23 +830,26 @@ code, .mono {
 /* Responsive Design */
 @media (max-width: 1200px) {
     :root {
-        --section-padding: 5rem;
+        --section-padding: 5rem 3rem;
     }
     
     .home-content {
         grid-template-columns: 1fr;
-        gap: 2rem;
+        gap: 3rem;
+        padding: 0 1rem;
     }
     
     .profile-container {
         align-items: center;
         text-align: center;
-
+        margin-bottom: 1rem;
     }
     
     .intro-text {
         margin: 0 auto;
         text-align: center;
+        max-width: 100%;
+        padding: 0 1rem;
     }
     
     .greeting {
@@ -836,11 +865,26 @@ code, .mono {
         justify-content: center;
         flex-wrap: wrap;
     }
+    
+    .projects-grid {
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 1.5rem;
+    }
+    
+    .achievements {
+        padding: 2rem;
+        margin: 0 1rem;
+    }
+    
+    .skills-section {
+        padding: 1.5rem;
+        margin: 3rem 1rem;
+    }
 }
 
 @media (max-width: 992px) {
     :root {
-        --section-padding: 4rem;
+        --section-padding: 4rem 2rem;
     }
     
     .name {
@@ -851,16 +895,53 @@ code, .mono {
         font-size: 1.5rem;
     }
     
+    .tagline {
+        font-size: 1rem;
+        padding: 0 1rem;
+    }
+    
     .profile-img {
         width: 300px;
         height: 330px;
     }
+    
+    .home {
+        padding: 5rem 1.5rem;
+    }
+    
+    .projects, .research, .notes {
+        padding: 4rem 2rem;
+    }
+    
+    .section-title {
+        font-size: 2.2rem;
+    }
+    
+    .notes-grid {
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    }
 }
 
 @media (max-width: 768px) {
+    :root {
+        --section-padding: 3rem 1.5rem;
+    }
 
-    .mobile-menu-btn{
-        display: none;
+    .sidebar {
+        transform: translateX(-100%);
+    }
+
+    .sidebar.active {
+        transform: translateX(0);
+    }
+
+    .main-container {
+        margin-left: 0;
+        width: 100%;
+    }
+
+    .mobile-menu-btn {
+        display: none !important;
     }
 
     .main-container.sidebar-open {
@@ -872,56 +953,331 @@ code, .mono {
     }
     
     .home {
-        padding-bottom: 100px;
+        padding: 3rem 1.5rem 120px;
+        min-height: auto;
+    }
+    
+    .home-content {
+        gap: 2rem;
+        padding: 0;
     }
     
     .projects, .research, .notes {
-        padding-bottom: 100px;
+        padding: 3rem 1.5rem 120px;
     }
     
     .name {
         font-size: 2.4rem;
     }
     
+    .title {
+        font-size: 1.3rem;
+    }
+    
+    .tagline {
+        font-size: 0.95rem;
+        padding: 0;
+    }
+    
     .section-title {
         font-size: 2rem;
     }
     
+    .section-header {
+        margin-bottom: 2rem;
+    }
+    
     .projects-grid {
         grid-template-columns: 1fr;
+        gap: 1.5rem;
+    }
+    
+    .notes-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .profile-img {
+        width: 280px;
+        height: 310px;
+    }
+    
+    .achievement-item {
+        padding: 0.8rem;
+        margin: 1rem 0;
+        flex-direction: row;
+    }
+    
+    .achievement-icon {
+        font-size: 1.3rem;
+        min-width: 25px;
+        margin-right: 12px;
+        margin-top: 2px;
+    }
+    
+    .achievement-content h3 {
+        font-size: 1.1rem;
+    }
+    
+    .achievement-content p {
+        font-size: 0.9rem;
+    }
+    
+    .achievements {
+        padding: 1.5rem;
+        margin: 2rem 0;
+    }
+    
+    .skills-section {
+        padding: 1.5rem;
+        margin: 2rem 0;
+    }
+    
+    .skills-section h2 {
+        font-size: 1.3rem;
+    }
+    
+    .filter-buttons, .notes-categories {
+        gap: 8px;
+    }
+    
+    .filter-btn, .category-btn {
+        padding: 0.5rem 1rem;
+        font-size: 0.85rem;
+    }
+    
+    .paper-card {
+        padding: 1.5rem;
+    }
+    
+    .paper-title {
+        font-size: 1.3rem;
     }
 }
 
 @media (max-width: 576px) {
     :root {
-        --section-padding: 3rem 1.5rem;
+        --section-padding: 2.5rem 1rem;
+    }
+    
+    .home {
+        padding: 2.5rem 1rem 120px;
+    }
+    
+    .home-content {
+        gap: 1.5rem;
     }
     
     .profile-img {
-        width: 240px;
-        height: 280px;
+        width: 220px;
+        height: 260px;
+        border: 5px solid var(--primary);
     }
     
     .name {
-        font-size: 2rem;
+        font-size: 1.8rem;
     }
     
     .title {
-        font-size: 1.3rem;
+        font-size: 1.1rem;
+    }
+    
+    .greeting {
+        font-size: 1rem;
+    }
+    
+    .tagline {
+        font-size: 0.9rem;
+        margin-bottom: 1.5rem;
     }
 
-    .mobile-menu-btn{
-        display: none;
+    .mobile-menu-btn {
+        display: flex;
+    }
+    
+    .social-links {
+        gap: 0.8rem;
+    }
+    
+    .social-link {
+        width: 38px;
+        height: 38px;
+        font-size: 1rem;
     }
     
     .btn {
         width: 100%;
         justify-content: center;
         margin-right: 0;
+        padding: 0.7rem 1.5rem;
+        font-size: 0.9rem;
     }
     
-    .paper-links, .project-links {
+    .projects, .research, .notes {
+        padding: 2.5rem 1rem 120px;
+    }
+    
+    .section-title {
+        font-size: 1.8rem;
+    }
+    
+    .section-subtitle {
+        font-size: 0.9rem;
+    }
+    
+    .achievements {
+        padding: 1.2rem;
+        margin: 1.5rem 0;
+    }
+    
+    .achievements h2 {
+        font-size: 1.2rem;
+        margin-bottom: 1rem;
+    }
+    
+    .achievement-item {
+        flex-direction: row;
+        text-align: left;
+        padding: 1rem 0.5rem;
+    }
+    
+    .achievement-icon {
+        font-size: 1.2rem;
+        min-width: 22px;
+        margin-right: 10px;
+        margin-top: 2px;
+    }
+    
+    .achievement-content h3 {
+        font-size: 1rem;
+    }
+    
+    .achievement-content p {
+        font-size: 0.85rem;
+    }
+    
+    .skills-section {
+        padding: 1.2rem;
+        margin: 1.5rem 0;
+    }
+    
+    .skills-section h2 {
+        font-size: 1.2rem;
+        margin-bottom: 1rem;
+    }
+    
+    .skill-box {
+        padding: 0.6rem 1rem;
+        font-size: 0.85rem;
+    }
+    
+    .filter-buttons, .notes-categories {
+        justify-content: center;
+    }
+    
+    .filter-btn, .category-btn {
+        padding: 0.5rem 0.9rem;
+        font-size: 0.8rem;
+    }
+    
+    .projects-grid {
+        gap: 1.2rem;
+    }
+    
+    .project-card {
+        margin: 0 0.5rem;
+    }
+    
+    .project-content {
+        padding: 1.2rem;
+    }
+    
+    .project-title {
+        font-size: 1.2rem;
+    }
+    
+    .project-desc {
+        font-size: 0.88rem;
+    }
+    
+    .tech-item {
+        font-size: 0.7rem;
+        padding: 0.25rem 0.7rem;
+    }
+    
+    .project-links {
         flex-direction: column;
+        gap: 8px;
+    }
+    
+    .project-link {
+        width: 100%;
+        justify-content: center;
+        padding: 0.6rem;
+        font-size: 0.85rem;
+    }
+    
+    .paper-card {
+        padding: 1.2rem;
+        margin: 0 0.5rem;
+    }
+    
+    .paper-title {
+        font-size: 1.1rem;
+    }
+    
+    .paper-authors {
+        font-size: 0.85rem;
+    }
+    
+    .paper-abstract {
+        font-size: 0.88rem;
+    }
+    
+    .paper-links {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .paper-link {
+        width: 100%;
+        justify-content: center;
+        font-size: 0.85rem;
+    }
+    
+    .notes-grid {
+        gap: 1.2rem;
+    }
+    
+    .note-card {
+        padding: 1.2rem;
+        margin: 0 0.5rem;
+    }
+    
+    .note-title {
+        font-size: 1.1rem;
+    }
+    
+    .note-desc {
+        font-size: 0.88rem;
+    }
+    
+    .note-link {
+        width: 100%;
+        justify-content: center;
+        font-size: 0.85rem;
+    }
+    
+    .mobile-nav a {
+        font-size: 0.65rem;
+        padding: 3px 8px;
+    }
+    
+    .mobile-nav a i {
+        font-size: 1.1rem;
+    }
+    
+    .welcome-text, .cursor {
+        font-size: 1.5rem;
     }
 }
 
@@ -948,6 +1304,11 @@ code, .mono {
     display: flex;
     align-items: center;
     gap: 10px;
+    flex-wrap: nowrap;
+}
+
+.skills-section h2 i {
+    flex-shrink: 0;
 }
 
 .skills-section h2::before {
@@ -956,6 +1317,7 @@ code, .mono {
     width: 30px;
     height: 2px;
     background: var(--primary);
+    flex-shrink: 0;
 }
 
 .skills-container {
@@ -985,14 +1347,14 @@ code, .mono {
 /* Responsive adjustments */
 @media (max-width: 768px) {
     .skills-container {
-        justify-content: flex-start;
-        overflow-x: auto;
-        padding-bottom: 1rem;
-        -webkit-overflow-scrolling: touch;
+        justify-content: center;
+        gap: 0.8rem;
     }
     
     .skill-box {
-        flex: 0 0 auto;
+        flex: 0 1 auto;
+        font-size: 0.85rem;
+        padding: 0.6rem 1rem;
     }
 }
 
@@ -1051,6 +1413,73 @@ code, .mono {
   .welcome-text, .cursor {
     font-size: 1.8rem;
   }
+}
+
+/* Extra small devices (phones, 400px and down) */
+@media (max-width: 400px) {
+    .profile-img {
+        width: 180px;
+        height: 220px;
+        border: 4px solid var(--primary);
+    }
+    
+    .name {
+        font-size: 1.5rem;
+    }
+    
+    .title {
+        font-size: 1rem;
+    }
+    
+    .greeting {
+        font-size: 0.9rem;
+    }
+    
+    .greeting::before {
+        width: 20px;
+    }
+    
+    .tagline {
+        font-size: 0.85rem;
+    }
+    
+    .social-link {
+        width: 35px;
+        height: 35px;
+        font-size: 0.9rem;
+    }
+    
+    .section-title {
+        font-size: 1.5rem;
+    }
+    
+    .achievements h2, .skills-section h2 {
+        font-size: 1.1rem;
+        flex-direction: row;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+    
+    .achievements h2::before, .skills-section h2::before {
+        width: 25px;
+    }
+    
+    .project-title, .note-title, .paper-title {
+        font-size: 1rem;
+    }
+    
+    .welcome-text, .cursor {
+        font-size: 1.2rem;
+    }
+    
+    .mobile-nav a {
+        font-size: 0.6rem;
+    }
+    
+    .mobile-nav a i {
+        font-size: 1rem;
+    }
 }
 
 
