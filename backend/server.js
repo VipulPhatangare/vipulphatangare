@@ -24,7 +24,7 @@ app.use('/api/apikeys', require('./routes/apikeys'));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Connect to MongoDB and start server
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5665;
 
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => {
