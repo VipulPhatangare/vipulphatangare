@@ -195,7 +195,7 @@ export default function Chatbot() {
               </div>
             </div>
             <div className="chat-header-actions">
-              <button className="chat-icon-btn" onClick={() => setExpanded(e => !e)} title={expanded ? 'Collapse' : 'Expand'}>
+              <button className="chat-icon-btn chat-expand-btn" onClick={() => setExpanded(e => !e)} title={expanded ? 'Collapse' : 'Expand'}>
                 <i className={`fas ${expanded ? 'fa-compress-alt' : 'fa-expand-alt'}`}></i>
               </button>
               <button className="chat-icon-btn" onClick={() => setShowConfirm(true)} title="Clear history">

@@ -2366,8 +2366,10 @@ body.light-mode .particle-canvas { opacity: 0.4; }
 @media (max-width: 768px) {
   /* Push FAB above the mobile nav bar (~70px tall) */
   .chat-fab { bottom: 5.5rem; right: 1rem; width: 48px; height: 48px; font-size: 1.1rem; }
-  .chat-window { width: calc(100vw - 1.5rem); right: 0.75rem; bottom: 6.8rem; border-radius: 14px; }
-  .chat-window-expanded { width: calc(100vw - 1.5rem); height: calc(100vh - 8rem); }
+  /* bottom = FAB bottom (5.5rem) + FAB height (3rem/48px) + gap (0.5rem) = 9rem */
+  .chat-window { width: calc(100vw - 1.5rem); right: 0.75rem; bottom: 9rem; border-radius: 14px; }
+  .chat-window-expanded { width: calc(100vw - 1.5rem); height: calc(100vh - 10.5rem); }
+  .chat-expand-btn { display: none; }
 }
 @media (max-width: 480px) {
   .chatbot-add-grid { grid-template-columns: 1fr; }
