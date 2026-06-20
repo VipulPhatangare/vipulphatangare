@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../api/axios.js';
+import ConfirmModal from './ConfirmModal.jsx';
 
 const EMPTY = { name: '', order: 0, isVisible: true };
 
@@ -10,6 +11,7 @@ export default function ManageSkills() {
   const [form, setForm] = useState(EMPTY);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const load = () => api.get('/skills/all').then(r => setItems(r.data)).catch(console.error);
   useEffect(() => { load(); }, []);
@@ -29,14 +31,28 @@ export default function ManageSkills() {
     } finally { setLoading(false); }
   };
 
-  const handleDelete = async (id) => {
-    if (!confirm('Delete this skill?')) return;
-    await api.delete(`/skills/${id}`).catch(console.error);
+  const handleDelete = async () => {
+    await api.delete(`/skills/${deleteTarget}`).catch(console.error);
+    setDeleteTarget(null);
     load();
   };
 
   const toggleVisibility = async (s) => {
     await api.put(`/skills/${s._id}`, { ...s, isVisible: !s.isVisible });
+    load();
+  };
+
+  const moveItem = async (item, direction) => {
+    const sorted = [...items].sort((a, b) =>
+      a.order !== b.order ? a.order - b.order : new Date(a.createdAt) - new Date(b.createdAt)
+    );
+    const idx = sorted.findIndex(s => s._id === item._id);
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= sorted.length) return;
+    await Promise.all([
+      api.put(`/skills/${sorted[idx]._id}`,    { ...sorted[idx],    order: swapIdx }),
+      api.put(`/skills/${sorted[swapIdx]._id}`, { ...sorted[swapIdx], order: idx }),
+    ]);
     load();
   };
 
@@ -58,19 +74,20 @@ export default function ManageSkills() {
       <div className="admin-table-wrapper">
         <table className="admin-table">
           <thead>
-            <tr><th>Skill Name</th><th>Order</th><th>Status</th><th>Actions</th></tr>
+            <tr><th>Skill Name</th><th>Status</th><th>Actions</th></tr>
           </thead>
           <tbody>
             {items.map(s => (
               <tr key={s._id}>
                 <td><strong>{s.name}</strong></td>
-                <td>{s.order}</td>
                 <td><span className={`badge badge-${s.isVisible ? 'visible' : 'hidden'}`}>{s.isVisible ? 'Visible' : 'Hidden'}</span></td>
                 <td>
                   <div className="table-actions">
+                    <button className="btn-move" onClick={() => moveItem(s, 'up')} title="Move up"><i className="fas fa-arrow-up"></i></button>
+                    <button className="btn-move" onClick={() => moveItem(s, 'down')} title="Move down"><i className="fas fa-arrow-down"></i></button>
                     <button className="btn-edit" onClick={() => openEdit(s)}>Edit</button>
                     <button className="btn-toggle" onClick={() => toggleVisibility(s)}>{s.isVisible ? 'Hide' : 'Show'}</button>
-                    <button className="btn-delete" onClick={() => handleDelete(s._id)}>Delete</button>
+                    <button className="btn-delete" onClick={() => setDeleteTarget(s._id)}>Delete</button>
                   </div>
                 </td>
               </tr>
@@ -78,6 +95,14 @@ export default function ManageSkills() {
           </tbody>
         </table>
       </div>
+
+      {deleteTarget && (
+        <ConfirmModal
+          message="Delete this skill? This cannot be undone."
+          onConfirm={handleDelete}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
 
       {modal && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setModal(false)}>
@@ -87,10 +112,6 @@ export default function ManageSkills() {
               <div className="form-group">
                 <label>Skill Name *</label>
                 <input value={form.name} onChange={f('name')} required placeholder="e.g. Python, React, MongoDB" />
-              </div>
-              <div className="form-group">
-                <label>Order (lower = first)</label>
-                <input type="number" value={form.order} onChange={f('order')} min={0} />
               </div>
               <div className="form-group checkbox-row">
                 <input type="checkbox" id="visibleSkill" checked={form.isVisible} onChange={f('isVisible')} />

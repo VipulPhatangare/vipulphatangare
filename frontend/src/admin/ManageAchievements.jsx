@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../api/axios.js';
+import ConfirmModal from './ConfirmModal.jsx';
 
 const EMPTY = { title: '', description: '', icon: 'fas fa-trophy', order: 0, isVisible: true };
 
@@ -10,6 +11,7 @@ export default function ManageAchievements() {
   const [form, setForm] = useState(EMPTY);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const load = () => api.get('/achievements/all').then(r => setItems(r.data)).catch(console.error);
   useEffect(() => { load(); }, []);
@@ -29,9 +31,9 @@ export default function ManageAchievements() {
     } finally { setLoading(false); }
   };
 
-  const handleDelete = async (id) => {
-    if (!confirm('Delete this achievement?')) return;
-    await api.delete(`/achievements/${id}`).catch(console.error);
+  const handleDelete = async () => {
+    await api.delete(`/achievements/${deleteTarget}`).catch(console.error);
+    setDeleteTarget(null);
     load();
   };
 
@@ -65,7 +67,7 @@ export default function ManageAchievements() {
                   <div className="table-actions">
                     <button className="btn-edit" onClick={() => openEdit(a)}>Edit</button>
                     <button className="btn-toggle" onClick={() => toggleVisibility(a)}>{a.isVisible ? 'Hide' : 'Show'}</button>
-                    <button className="btn-delete" onClick={() => handleDelete(a._id)}>Delete</button>
+                    <button className="btn-delete" onClick={() => setDeleteTarget(a._id)}>Delete</button>
                   </div>
                 </td>
               </tr>
@@ -73,6 +75,14 @@ export default function ManageAchievements() {
           </tbody>
         </table>
       </div>
+
+      {deleteTarget && (
+        <ConfirmModal
+          message="Delete this achievement? This cannot be undone."
+          onConfirm={handleDelete}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
 
       {modal && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setModal(false)}>

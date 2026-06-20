@@ -19,6 +19,10 @@ app.use('/api/notes', require('./routes/notes'));
 app.use('/api/profile', require('./routes/profile'));
 app.use('/api/chatbot', require('./routes/chatbot'));
 app.use('/api/apikeys', require('./routes/apikeys'));
+app.use('/api/agents', require('./routes/agents'));
+app.use('/api/prompts', require('./routes/prompts'));
+app.use('/api/ports',   require('./routes/ports'));
+app.use('/api/contact', require('./routes/contact'));
 
 // Serve static files (profile image)
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));

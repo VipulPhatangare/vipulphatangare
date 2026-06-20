@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '../api/axios.js';
+import ConfirmModal from './ConfirmModal.jsx';
 
 const DEFAULT_CONFIG = {
   systemPrompt: '',
@@ -26,6 +27,7 @@ export default function ManageChatbot() {
   const [submitting, setSubmitting] = useState(false);
   const [msg, setMsg] = useState(null); // { type: 'success'|'error', text }
   const [deleteId, setDeleteId] = useState(null);
+  const [chunkSearch, setChunkSearch] = useState('');
   const fileInputRef = useRef(null);
 
   const flash = (type, text) => {
@@ -33,10 +35,11 @@ export default function ManageChatbot() {
     setTimeout(() => setMsg(null), 4000);
   };
 
-  const loadChunks = async (p = 1) => {
+  const loadChunks = async (p = 1, search = chunkSearch) => {
     setLoadingChunks(true);
     try {
-      const { data } = await api.get(`/chatbot/chunks?page=${p}`);
+      const q = search.trim() ? `&search=${encodeURIComponent(search.trim())}` : '';
+      const { data } = await api.get(`/chatbot/chunks?page=${p}${q}`);
       setChunks(data.chunks);
       setTotal(data.total);
       setPage(data.page);
@@ -209,14 +212,34 @@ export default function ManageChatbot() {
 
           {/* Chunks List */}
           <div className="stat-card" style={{ marginTop: '1.5rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <div className="chunks-header">
               <h3 className="chatbot-section-title" style={{ margin: 0 }}>
                 <i className="fas fa-layer-group"></i> Stored Chunks
                 <span className="chatbot-count">{total}</span>
               </h3>
-              <button className="btn-secondary" onClick={() => loadChunks(page)}>
+              <button className="btn-secondary" onClick={() => loadChunks(1, chunkSearch)}>
                 <i className="fas fa-sync-alt"></i> Refresh
               </button>
+            </div>
+
+            {/* Search */}
+            <div className="prompt-search-wrap" style={{ marginBottom: '1rem' }}>
+              <i className="fas fa-search prompt-search-icon"></i>
+              <input
+                className="prompt-search-input"
+                placeholder="Search by source label or content…"
+                value={chunkSearch}
+                onChange={e => {
+                  const val = e.target.value;
+                  setChunkSearch(val);
+                  loadChunks(1, val);
+                }}
+              />
+              {chunkSearch && (
+                <button className="prompt-search-clear" onClick={() => { setChunkSearch(''); loadChunks(1, ''); }}>
+                  <i className="fas fa-times"></i>
+                </button>
+              )}
             </div>
 
             {loadingChunks ? (
@@ -242,26 +265,19 @@ export default function ManageChatbot() {
                     <tbody>
                       {chunks.map(c => (
                         <tr key={c._id}>
-                          <td className="chunk-id">{c._id.slice(-8)}</td>
-                          <td>
+                          <td data-label="ID" className="chunk-id">{c._id.slice(-8)}</td>
+                          <td data-label="Source">
                             <span className={`chunk-badge chunk-badge-${c.source}`}>
                               <i className={`fas ${c.source === 'pdf' ? 'fa-file-pdf' : 'fa-align-left'}`}></i>
                               {c.sourceLabel}
                             </span>
                           </td>
-                          <td className="chunk-preview">{c.text.slice(0, 100)}…</td>
-                          <td className="chunk-date">{new Date(c.createdAt).toLocaleDateString()}</td>
-                          <td>
-                            {deleteId === c._id ? (
-                              <div style={{ display: 'flex', gap: '6px' }}>
-                                <button className="btn-danger-sm" onClick={() => deleteChunk(c._id)}>Confirm</button>
-                                <button className="btn-secondary-sm" onClick={() => setDeleteId(null)}>Cancel</button>
-                              </div>
-                            ) : (
-                              <button className="btn-danger-sm" onClick={() => setDeleteId(c._id)}>
-                                <i className="fas fa-trash"></i>
-                              </button>
-                            )}
+                          <td data-label="Preview" className="chunk-preview">{c.text.slice(0, 100)}…</td>
+                          <td data-label="Date" className="chunk-date">{new Date(c.createdAt).toLocaleDateString()}</td>
+                          <td data-label="Action">
+                            <button className="btn-danger-sm" onClick={() => setDeleteId(c._id)}>
+                              <i className="fas fa-trash"></i>
+                            </button>
                           </td>
                         </tr>
                       ))}
@@ -363,6 +379,14 @@ export default function ManageChatbot() {
             </form>
           )}
         </div>
+      )}
+
+      {deleteId && (
+        <ConfirmModal
+          message="Delete this knowledge chunk? This cannot be undone."
+          onConfirm={() => deleteChunk(deleteId)}
+          onCancel={() => setDeleteId(null)}
+        />
       )}
     </div>
   );

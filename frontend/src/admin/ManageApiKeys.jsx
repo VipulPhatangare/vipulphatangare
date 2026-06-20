@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '../api/axios.js';
+import ConfirmModal from './ConfirmModal.jsx';
 
 const EMPTY_FORM = { name: '', description: '', apiKey: '' };
+const MAX_PINS = 3;
 
 export default function ManageApiKeys() {
   const [keys, setKeys] = useState([]);
@@ -13,6 +15,7 @@ export default function ManageApiKeys() {
   const [revealed, setRevealed] = useState({});
   const [revealing, setRevealing] = useState({});
   const [copied, setCopied] = useState({});
+  const [pinning, setPinning] = useState({});
   const [deleteId, setDeleteId] = useState(null);
   const [msg, setMsg] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -33,29 +36,23 @@ export default function ManageApiKeys() {
   };
 
   useEffect(() => { load(); }, []);
+  useEffect(() => { if (showModal) setTimeout(() => nameRef.current?.focus(), 80); }, [showModal]);
 
-  useEffect(() => {
-    if (showModal) setTimeout(() => nameRef.current?.focus(), 80);
-  }, [showModal]);
+  const pinnedKeys = keys.filter(k => k.pinned);
+  const pinnedCount = pinnedKeys.length;
 
   const filtered = keys.filter(k => {
     const q = search.toLowerCase();
     return k.name.toLowerCase().includes(q) || (k.description || '').toLowerCase().includes(q);
   });
 
-  const openAdd = () => {
-    setEditId(null);
-    setForm(EMPTY_FORM);
-    setShowModal(true);
-  };
-
+  const openAdd = () => { setEditId(null); setForm(EMPTY_FORM); setShowModal(true); };
   const openEdit = (k) => {
     setEditId(k._id);
     setForm({ name: k.name, description: k.description, apiKey: '' });
     setShowModal(true);
     setRevealed(prev => { const n = { ...prev }; delete n[k._id]; return n; });
   };
-
   const closeModal = () => { setShowModal(false); setEditId(null); setForm(EMPTY_FORM); };
 
   const submit = async (e) => {
@@ -111,6 +108,21 @@ export default function ManageApiKeys() {
     } catch { flash('error', 'Clipboard access denied'); }
   };
 
+  const togglePin = async (k) => {
+    if (!k.pinned && pinnedCount >= MAX_PINS) {
+      flash('error', `Max ${MAX_PINS} keys can be pinned. Unpin one first.`);
+      return;
+    }
+    setPinning(prev => ({ ...prev, [k._id]: true }));
+    try {
+      await api.patch(`/apikeys/${k._id}/pin`);
+      flash('success', k.pinned ? 'Key unpinned' : 'Key pinned');
+      load();
+    } catch (err) {
+      flash('error', err.response?.data?.error || 'Failed to update pin');
+    } finally { setPinning(prev => ({ ...prev, [k._id]: false })); }
+  };
+
   const deleteKey = async (id) => {
     try {
       await api.delete(`/apikeys/${id}`);
@@ -120,6 +132,78 @@ export default function ManageApiKeys() {
       load();
     } catch { flash('error', 'Failed to delete'); }
   };
+
+  const renderCard = (k) => (
+    <div key={k._id} className={`apikey-card stat-card${k.pinned ? ' apikey-card-pinned' : ''}`}>
+      <div className="apikey-card-top">
+        <div className="apikey-card-info">
+          <div className="apikey-name">
+            <i className="fas fa-key"></i>
+            {k.name}
+            {k.pinned && <span className="apikey-pin-badge"><i className="fas fa-thumbtack"></i> Pinned</span>}
+          </div>
+          {k.description && <div className="apikey-desc">{k.description}</div>}
+          <div className="apikey-meta">
+            Added {new Date(k.createdAt).toLocaleDateString()}
+            {k.updatedAt !== k.createdAt && ` · Updated ${new Date(k.updatedAt).toLocaleDateString()}`}
+          </div>
+        </div>
+        <div className="apikey-actions">
+          {/* Pin / Unpin */}
+          <button
+            className={`apikey-btn${k.pinned ? ' apikey-btn-pinned' : ' apikey-btn-pin'}`}
+            onClick={() => togglePin(k)}
+            disabled={pinning[k._id] || (!k.pinned && pinnedCount >= MAX_PINS)}
+            title={k.pinned ? 'Unpin' : pinnedCount >= MAX_PINS ? `Max ${MAX_PINS} pins reached` : 'Pin to top'}
+          >
+            <i className={`fas ${pinning[k._id] ? 'fa-spinner fa-spin' : 'fa-thumbtack'}`}></i>
+            {k.pinned ? 'Unpin' : 'Pin'}
+          </button>
+
+          <button
+            className="apikey-btn apikey-btn-reveal"
+            onClick={() => reveal(k._id)}
+            disabled={revealing[k._id]}
+            title={revealed[k._id] ? 'Hide key' : 'Show key'}
+          >
+            <i className={`fas ${revealing[k._id] ? 'fa-spinner fa-spin' : revealed[k._id] ? 'fa-eye-slash' : 'fa-eye'}`}></i>
+            {revealed[k._id] ? 'Hide' : 'Show'}
+          </button>
+
+          <button
+            className={`apikey-btn apikey-btn-copy${copied[k._id] ? ' copied' : ''}`}
+            onClick={() => copyKey(k._id)}
+            disabled={revealing[k._id]}
+            title="Copy key"
+          >
+            <i className={`fas ${copied[k._id] ? 'fa-check' : 'fa-copy'}`}></i>
+            {copied[k._id] ? 'Copied!' : 'Copy'}
+          </button>
+
+          <button className="apikey-btn apikey-btn-edit" onClick={() => openEdit(k)} title="Edit">
+            <i className="fas fa-edit"></i> Edit
+          </button>
+
+          <button className="apikey-btn apikey-btn-danger" onClick={() => setDeleteId(k._id)} title="Delete">
+            <i className="fas fa-trash"></i>
+          </button>
+        </div>
+      </div>
+
+      {revealed[k._id] && (
+        <div className="apikey-revealed">
+          <i className="fas fa-unlock-alt apikey-revealed-icon"></i>
+          <code className="apikey-revealed-text">{revealed[k._id]}</code>
+          <button className="apikey-copy-inline" onClick={() => copyKey(k._id)} title="Copy">
+            <i className={`fas ${copied[k._id] ? 'fa-check' : 'fa-copy'}`}></i>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
+  const pinnedFiltered  = filtered.filter(k => k.pinned);
+  const regularFiltered = filtered.filter(k => !k.pinned);
 
   return (
     <div>
@@ -140,6 +224,19 @@ export default function ManageApiKeys() {
           <i className="fas fa-plus"></i> Add API Key
         </button>
       </div>
+
+      {/* Pin quota bar */}
+      {!loading && keys.length > 0 && (
+        <div className="apikey-pin-quota">
+          <i className="fas fa-thumbtack"></i>
+          <span>Pinned: <strong>{pinnedCount} / {MAX_PINS}</strong></span>
+          <div className="apikey-pin-track">
+            {Array.from({ length: MAX_PINS }).map((_, i) => (
+              <div key={i} className={`apikey-pin-dot${i < pinnedCount ? ' filled' : ''}`} />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Search bar */}
       {!loading && keys.length > 0 && (
@@ -175,67 +272,20 @@ export default function ManageApiKeys() {
         </div>
       ) : (
         <div className="apikeys-list">
-          {filtered.map(k => (
-            <div key={k._id} className="apikey-card stat-card">
-              <div className="apikey-card-top">
-                <div className="apikey-card-info">
-                  <div className="apikey-name"><i className="fas fa-key"></i>{k.name}</div>
-                  {k.description && <div className="apikey-desc">{k.description}</div>}
-                  <div className="apikey-meta">
-                    Added {new Date(k.createdAt).toLocaleDateString()}
-                    {k.updatedAt !== k.createdAt && ` · Updated ${new Date(k.updatedAt).toLocaleDateString()}`}
-                  </div>
-                </div>
-                <div className="apikey-actions">
-                  <button
-                    className="apikey-btn apikey-btn-reveal"
-                    onClick={() => reveal(k._id)}
-                    disabled={revealing[k._id]}
-                    title={revealed[k._id] ? 'Hide key' : 'Show key'}
-                  >
-                    <i className={`fas ${revealing[k._id] ? 'fa-spinner fa-spin' : revealed[k._id] ? 'fa-eye-slash' : 'fa-eye'}`}></i>
-                    {revealed[k._id] ? 'Hide' : 'Show'}
-                  </button>
-                  <button
-                    className={`apikey-btn apikey-btn-copy${copied[k._id] ? ' copied' : ''}`}
-                    onClick={() => copyKey(k._id)}
-                    disabled={revealing[k._id]}
-                    title="Copy key"
-                  >
-                    <i className={`fas ${copied[k._id] ? 'fa-check' : 'fa-copy'}`}></i>
-                    {copied[k._id] ? 'Copied!' : 'Copy'}
-                  </button>
-                  <button className="apikey-btn apikey-btn-edit" onClick={() => openEdit(k)} title="Edit">
-                    <i className="fas fa-edit"></i> Edit
-                  </button>
-                  {deleteId === k._id ? (
-                    <>
-                      <button className="apikey-btn apikey-btn-danger" onClick={() => deleteKey(k._id)}>
-                        <i className="fas fa-check"></i> Confirm
-                      </button>
-                      <button className="apikey-btn apikey-btn-ghost" onClick={() => setDeleteId(null)}>
-                        Cancel
-                      </button>
-                    </>
-                  ) : (
-                    <button className="apikey-btn apikey-btn-danger" onClick={() => setDeleteId(k._id)} title="Delete">
-                      <i className="fas fa-trash"></i>
-                    </button>
-                  )}
-                </div>
+          {pinnedFiltered.length > 0 && (
+            <>
+              <div className="apikey-section-label">
+                <i className="fas fa-thumbtack"></i> Pinned ({pinnedFiltered.length}/{MAX_PINS})
               </div>
-
-              {revealed[k._id] && (
-                <div className="apikey-revealed">
-                  <i className="fas fa-unlock-alt apikey-revealed-icon"></i>
-                  <code className="apikey-revealed-text">{revealed[k._id]}</code>
-                  <button className="apikey-copy-inline" onClick={() => copyKey(k._id)} title="Copy">
-                    <i className={`fas ${copied[k._id] ? 'fa-check' : 'fa-copy'}`}></i>
-                  </button>
+              {pinnedFiltered.map(renderCard)}
+              {regularFiltered.length > 0 && (
+                <div className="apikey-section-label apikey-section-label-rest">
+                  <i className="fas fa-key"></i> All Keys
                 </div>
               )}
-            </div>
-          ))}
+            </>
+          )}
+          {regularFiltered.map(renderCard)}
         </div>
       )}
 
@@ -297,9 +347,7 @@ export default function ManageApiKeys() {
               </div>
 
               <div className="apikey-modal-actions">
-                <button type="button" className="btn-secondary" onClick={closeModal} disabled={submitting}>
-                  Cancel
-                </button>
+                <button type="button" className="btn-secondary" onClick={closeModal} disabled={submitting}>Cancel</button>
                 <button type="submit" className="btn-primary" disabled={submitting}>
                   <i className="fas fa-save"></i>
                   {submitting ? 'Saving…' : editId ? 'Update Key' : 'Save Key'}
@@ -308,6 +356,14 @@ export default function ManageApiKeys() {
             </form>
           </div>
         </div>
+      )}
+
+      {deleteId && (
+        <ConfirmModal
+          message="Delete this API key? This cannot be undone."
+          onConfirm={() => deleteKey(deleteId)}
+          onCancel={() => setDeleteId(null)}
+        />
       )}
     </div>
   );

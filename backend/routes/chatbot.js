@@ -57,14 +57,21 @@ router.post('/chat', async (req, res) => {
 
 // ── ADMIN ────────────────────────────────────────────────────────────
 
-// GET /api/chatbot/chunks  (paginated, excludes embedding array)
+// GET /api/chatbot/chunks  (paginated + search, excludes embedding array)
 router.get('/chunks', auth, async (req, res) => {
   try {
-    const page = Math.max(1, parseInt(req.query.page) || 1);
-    const limit = 20;
-    const skip = (page - 1) * limit;
-    const total = await ChatbotChunk.countDocuments();
-    const chunks = await ChatbotChunk.find({}, '-embedding')
+    const page  = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = 10;
+    const skip  = (page - 1) * limit;
+    const q     = req.query.search?.trim();
+    const filter = q
+      ? { $or: [
+          { text:        { $regex: q, $options: 'i' } },
+          { sourceLabel: { $regex: q, $options: 'i' } },
+        ] }
+      : {};
+    const total  = await ChatbotChunk.countDocuments(filter);
+    const chunks = await ChatbotChunk.find(filter, '-embedding')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);

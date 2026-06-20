@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../api/axios.js';
+import ConfirmModal from './ConfirmModal.jsx';
 
 const EMPTY = {
   title: '', description: '', category: 'web',
@@ -14,6 +15,7 @@ export default function ManageProjects() {
   const [form, setForm] = useState(EMPTY);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const load = () => api.get('/projects/all').then(r => setProjects(r.data)).catch(console.error);
   useEffect(() => { load(); }, []);
@@ -46,14 +48,28 @@ export default function ManageProjects() {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!confirm('Delete this project?')) return;
-    await api.delete(`/projects/${id}`).catch(console.error);
+  const handleDelete = async () => {
+    await api.delete(`/projects/${deleteTarget}`).catch(console.error);
+    setDeleteTarget(null);
     load();
   };
 
   const toggleVisibility = async (p) => {
     await api.put(`/projects/${p._id}`, { ...p, techStack: p.techStack, isVisible: !p.isVisible });
+    load();
+  };
+
+  const moveItem = async (item, direction) => {
+    const sorted = [...projects].sort((a, b) =>
+      a.order !== b.order ? a.order - b.order : new Date(b.createdAt) - new Date(a.createdAt)
+    );
+    const idx = sorted.findIndex(p => p._id === item._id);
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= sorted.length) return;
+    await Promise.all([
+      api.put(`/projects/${sorted[idx]._id}`,    { ...sorted[idx],    order: swapIdx }),
+      api.put(`/projects/${sorted[swapIdx]._id}`, { ...sorted[swapIdx], order: idx }),
+    ]);
     load();
   };
 
@@ -80,23 +96,25 @@ export default function ManageProjects() {
           <tbody>
             {projects.map(p => (
               <tr key={p._id}>
-                <td><strong>{p.title}</strong></td>
-                <td><span className={`badge badge-${p.category}`}>{p.category}</span></td>
-                <td style={{ fontSize: '0.8rem', color: 'rgba(240,244,248,0.6)', maxWidth: 200 }}>
+                <td data-label="Title"><strong>{p.title}</strong></td>
+                <td data-label="Category"><span className={`badge badge-${p.category}`}>{p.category}</span></td>
+                <td data-label="Tech Stack" style={{ fontSize: '0.8rem', color: 'rgba(240,244,248,0.6)', maxWidth: 200 }}>
                   {p.techStack.slice(0, 3).join(', ')}{p.techStack.length > 3 ? '...' : ''}
                 </td>
-                <td>
+                <td data-label="Status">
                   <span className={`badge badge-${p.isVisible ? 'visible' : 'hidden'}`}>
                     {p.isVisible ? 'Visible' : 'Hidden'}
                   </span>
                 </td>
-                <td>
+                <td data-label="Actions">
                   <div className="table-actions">
+                    <button className="btn-move" onClick={() => moveItem(p, 'up')} title="Move up"><i className="fas fa-arrow-up"></i></button>
+                    <button className="btn-move" onClick={() => moveItem(p, 'down')} title="Move down"><i className="fas fa-arrow-down"></i></button>
                     <button className="btn-edit" onClick={() => openEdit(p)}>Edit</button>
                     <button className="btn-toggle" onClick={() => toggleVisibility(p)}>
                       {p.isVisible ? 'Hide' : 'Show'}
                     </button>
-                    <button className="btn-delete" onClick={() => handleDelete(p._id)}>Delete</button>
+                    <button className="btn-delete" onClick={() => setDeleteTarget(p._id)}>Delete</button>
                   </div>
                 </td>
               </tr>
@@ -120,6 +138,10 @@ export default function ManageProjects() {
                   <option value="web">Web Development</option>
                   <option value="ml">Machine Learning</option>
                   <option value="agentic">Agentic AI</option>
+                  <option value="genai">Generative AI</option>
+                  <option value="deeplearning">Deep Learning</option>
+                  <option value="arvr">AR / VR</option>
+                  <option value="nlp">NLP</option>
                 </select>
               </div>
               <div className="form-group">
@@ -142,10 +164,6 @@ export default function ManageProjects() {
                 <label>Drive Link</label>
                 <input value={form.driveLink} onChange={f('driveLink')} placeholder="https://drive.google.com/..." />
               </div>
-              <div className="form-group">
-                <label>Order (lower = first)</label>
-                <input type="number" value={form.order} onChange={f('order')} min={0} />
-              </div>
               <div className="form-group checkbox-row">
                 <input type="checkbox" id="visiblePrj" checked={form.isVisible} onChange={f('isVisible')} />
                 <label htmlFor="visiblePrj">Visible on portfolio</label>
@@ -160,6 +178,14 @@ export default function ManageProjects() {
             </form>
           </div>
         </div>
+      )}
+
+      {deleteTarget && (
+        <ConfirmModal
+          message="Delete this project? This cannot be undone."
+          onConfirm={handleDelete}
+          onCancel={() => setDeleteTarget(null)}
+        />
       )}
     </div>
   );

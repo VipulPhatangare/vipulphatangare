@@ -4,6 +4,7 @@ import Home from './Home.jsx';
 import Projects from './Projects.jsx';
 import Research from './Research.jsx';
 import Notes from './Notes.jsx';
+import Contact from './Contact.jsx';
 import ParticleCanvas from './ParticleCanvas.jsx';
 import GradientMesh from './GradientMesh.jsx';
 import CustomCursor from './CustomCursor.jsx';
@@ -12,10 +13,11 @@ import Chatbot from './Chatbot.jsx';
 import { useToast, ToastContainer } from './Toast.jsx';
 
 const SECTIONS = [
-  { id: 'home', label: 'Home', icon: 'fas fa-home' },
-  { id: 'projects', label: 'Projects', icon: 'fas fa-code' },
-  { id: 'research', label: 'Research', icon: 'fas fa-file-alt' },
-  { id: 'notes', label: 'Study Material', icon: 'fas fa-book' },
+  { id: 'home',     label: 'Home',          icon: 'fas fa-home' },
+  { id: 'projects', label: 'Projects',       icon: 'fas fa-code' },
+  { id: 'research', label: 'Research',       icon: 'fas fa-file-alt' },
+  { id: 'notes',    label: 'Study Material', icon: 'fas fa-book' },
+  { id: 'contact',  label: 'Contact',        icon: 'fas fa-envelope' },
 ];
 
 export default function Portfolio() {
@@ -152,10 +154,11 @@ export default function Portfolio() {
 
       {/* Main content */}
       <div className="main-container" style={{ position: 'relative', zIndex: 2 }}>
-        {active === 'home' && <Home addToast={addToast} />}
+        {active === 'home'     && <Home addToast={addToast} />}
         {active === 'projects' && <Projects />}
         {active === 'research' && <Research />}
-        {active === 'notes' && <Notes />}
+        {active === 'notes'    && <Notes />}
+        {active === 'contact'  && <Contact />}
 
         <footer className="footer">
           <p className="footer-text">© 2025 Vipul Phatangare. All rights reserved.</p>

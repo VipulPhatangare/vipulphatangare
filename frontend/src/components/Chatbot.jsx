@@ -76,6 +76,7 @@ export default function Chatbot() {
   const [loading, setLoading] = useState(false);
   const [config, setConfig] = useState({ typingSpeed: 18 });
   const [showConfirm, setShowConfirm] = useState(false);
+  const [copiedId, setCopiedId] = useState(null);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const typingTimerRef = useRef(null);
@@ -166,6 +167,13 @@ export default function Chatbot() {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   };
 
+  const copyBotMsg = (id, text) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+    });
+  };
+
   const confirmClear = () => {
     if (typingTimerRef.current) clearInterval(typingTimerRef.current);
     setMessages([]);
@@ -235,6 +243,15 @@ export default function Chatbot() {
                 <div className={`chat-bubble${msg.isError ? ' chat-bubble-error' : ''}`}>
                   {msg.role === 'bot' ? (
                     <>
+                      {!msg.isTyping && !msg.isError && (
+                        <button
+                          className={`chat-copy-btn${copiedId === msg.id ? ' copied' : ''}`}
+                          onClick={() => copyBotMsg(msg.id, msg.text)}
+                          title={copiedId === msg.id ? 'Copied!' : 'Copy response'}
+                        >
+                          <i className={`fas ${copiedId === msg.id ? 'fa-check' : 'fa-copy'}`}></i>
+                        </button>
+                      )}
                       <div
                         className="chat-msg-content"
                         dangerouslySetInnerHTML={{ __html: parseMarkdown(msg.displayedText) }}

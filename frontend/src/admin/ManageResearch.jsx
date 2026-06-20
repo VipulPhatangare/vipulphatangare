@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../api/axios.js';
+import ConfirmModal from './ConfirmModal.jsx';
 
 const EMPTY = { title: '', authors: '', abstract: '', conference: '', paperLink: '', downloadLink: '', doiLink: '', order: 0, isVisible: true };
 
@@ -10,6 +11,7 @@ export default function ManageResearch() {
   const [form, setForm] = useState(EMPTY);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const load = () => api.get('/research/all').then(r => setItems(r.data)).catch(console.error);
   useEffect(() => { load(); }, []);
@@ -29,9 +31,9 @@ export default function ManageResearch() {
     } finally { setLoading(false); }
   };
 
-  const handleDelete = async (id) => {
-    if (!confirm('Delete this paper?')) return;
-    await api.delete(`/research/${id}`).catch(console.error);
+  const handleDelete = async () => {
+    await api.delete(`/research/${deleteTarget}`).catch(console.error);
+    setDeleteTarget(null);
     load();
   };
 
@@ -64,7 +66,7 @@ export default function ManageResearch() {
                   <div className="table-actions">
                     <button className="btn-edit" onClick={() => openEdit(r)}>Edit</button>
                     <button className="btn-toggle" onClick={() => toggleVisibility(r)}>{r.isVisible ? 'Hide' : 'Show'}</button>
-                    <button className="btn-delete" onClick={() => handleDelete(r._id)}>Delete</button>
+                    <button className="btn-delete" onClick={() => setDeleteTarget(r._id)}>Delete</button>
                   </div>
                 </td>
               </tr>
@@ -72,6 +74,14 @@ export default function ManageResearch() {
           </tbody>
         </table>
       </div>
+
+      {deleteTarget && (
+        <ConfirmModal
+          message="Delete this research paper? This cannot be undone."
+          onConfirm={handleDelete}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
 
       {modal && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setModal(false)}>
