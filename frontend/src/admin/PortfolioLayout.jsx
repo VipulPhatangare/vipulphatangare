@@ -7,6 +7,7 @@ import ManageResearch     from './ManageResearch.jsx';
 import ManageSkills       from './ManageSkills.jsx';
 import ManageNotes        from './ManageNotes.jsx';
 import ManageProfile      from './ManageProfile.jsx';
+import ManageCertificates from './ManageCertificates.jsx';
 
 const PORTFOLIO_NAV = [
   { path: '/admin/portfolio',              label: 'Dashboard',      icon: 'fas fa-tachometer-alt', exact: true },
@@ -16,6 +17,7 @@ const PORTFOLIO_NAV = [
   { path: '/admin/portfolio/skills',       label: 'Skills',         icon: 'fas fa-cogs' },
   { path: '/admin/portfolio/notes',        label: 'Study Material', icon: 'fas fa-book' },
   { path: '/admin/portfolio/profile',      label: 'Profile',        icon: 'fas fa-user' },
+  { path: '/admin/portfolio/certificates', label: 'Gallery',   icon: 'fas fa-images' },
 ];
 
 export default function PortfolioLayout() {
@@ -92,6 +94,7 @@ export default function PortfolioLayout() {
             <Route path="/skills"        element={<ManageSkills />} />
             <Route path="/notes"         element={<ManageNotes />} />
             <Route path="/profile"       element={<ManageProfile />} />
+            <Route path="/certificates"  element={<ManageCertificates />} />
           </Routes>
         </div>
       </div>

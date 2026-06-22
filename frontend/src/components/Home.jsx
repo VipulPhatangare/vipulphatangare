@@ -146,7 +146,7 @@ export default function Home({ addToast }) {
           <p className="tagline">{profile?.tagline}</p>
 
           <div className="counters-row">
-            <Counter target={14} label="Projects" />
+            <Counter target={20} label="Projects" />
             <div className="counter-divider" />
             <Counter target={5} label="Achievements" />
             <div className="counter-divider" />

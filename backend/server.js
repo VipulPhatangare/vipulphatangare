@@ -23,6 +23,7 @@ app.use('/api/agents', require('./routes/agents'));
 app.use('/api/prompts', require('./routes/prompts'));
 app.use('/api/ports',   require('./routes/ports'));
 app.use('/api/contact', require('./routes/contact'));
+app.use('/api/certificates', require('./routes/certificates'));
 
 // Serve static files (profile image)
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));

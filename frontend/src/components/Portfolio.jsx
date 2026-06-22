@@ -5,6 +5,7 @@ import Projects from './Projects.jsx';
 import Research from './Research.jsx';
 import Notes from './Notes.jsx';
 import Contact from './Contact.jsx';
+import Certificates from './Certificates.jsx';
 import ParticleCanvas from './ParticleCanvas.jsx';
 import GradientMesh from './GradientMesh.jsx';
 import CustomCursor from './CustomCursor.jsx';
@@ -16,8 +17,9 @@ const SECTIONS = [
   { id: 'home',     label: 'Home',          icon: 'fas fa-home' },
   { id: 'projects', label: 'Projects',       icon: 'fas fa-code' },
   { id: 'research', label: 'Research',       icon: 'fas fa-file-alt' },
-  { id: 'notes',    label: 'Study Material', icon: 'fas fa-book' },
-  { id: 'contact',  label: 'Contact',        icon: 'fas fa-envelope' },
+  { id: 'notes',        label: 'Study Material', icon: 'fas fa-book' },
+  { id: 'certificates', label: 'Gallery',   icon: 'fas fa-images' },
+  { id: 'contact',      label: 'Contact',        icon: 'fas fa-envelope' },
 ];
 
 export default function Portfolio() {
@@ -106,9 +108,22 @@ export default function Portfolio() {
 
       {showWelcome && <WelcomeAnimation onDone={() => setShowWelcome(false)} />}
 
-      <button className="mobile-menu-btn" onClick={() => setMobileOpen(o => !o)}>
-        <i className={`fas ${mobileOpen ? 'fa-times' : 'fa-bars'}`}></i>
-      </button>
+      {/* Mobile top bar */}
+      <header className="mobile-topbar">
+        <button className="mobile-topbar-btn" onClick={() => setMobileOpen(true)} aria-label="Open menu">
+          <i className="fas fa-bars"></i>
+        </button>
+        <span className="mobile-topbar-title">
+          {SECTIONS.find(s => s.id === active)?.label || 'Portfolio'}
+        </span>
+      </header>
+
+      {/* Sidebar overlay (mobile) */}
+      <div
+        className="sidebar-overlay"
+        style={{ opacity: mobileOpen ? 1 : 0, pointerEvents: mobileOpen ? 'auto' : 'none' }}
+        onClick={() => setMobileOpen(false)}
+      />
 
       {/* Sidebar */}
       <nav className={`sidebar${mobileOpen ? ' mobile-open' : ''}`}>
@@ -118,6 +133,9 @@ export default function Portfolio() {
             <div className="sidebar-name">Vipul Phatangare</div>
             <div className="sidebar-title">AI/ML Engineer</div>
           </div>
+          <button className="sidebar-close" onClick={() => setMobileOpen(false)} aria-label="Close menu">
+            <i className="fas fa-times"></i>
+          </button>
         </div>
         <div className="nav-links">
           {SECTIONS.map((s, i) => (
@@ -135,30 +153,14 @@ export default function Portfolio() {
         </div>
       </nav>
 
-      {/* Mobile bottom nav */}
-      <nav className="mobile-nav">
-        <div className="mobile-nav-container">
-          {SECTIONS.map(s => (
-            <a
-              key={s.id}
-              className={active === s.id ? 'active' : ''}
-              onClick={(e) => { e.preventDefault(); navigate(s.id); }}
-              href={`#${s.id}`}
-            >
-              <i className={s.icon}></i>
-              <span>{s.label}</span>
-            </a>
-          ))}
-        </div>
-      </nav>
-
       {/* Main content */}
       <div className="main-container" style={{ position: 'relative', zIndex: 2 }}>
         {active === 'home'     && <Home addToast={addToast} />}
         {active === 'projects' && <Projects />}
         {active === 'research' && <Research />}
-        {active === 'notes'    && <Notes />}
-        {active === 'contact'  && <Contact />}
+        {active === 'notes'        && <Notes />}
+        {active === 'certificates' && <Certificates />}
+        {active === 'contact'      && <Contact />}
 
         <footer className="footer">
           <p className="footer-text">© 2025 Vipul Phatangare. All rights reserved.</p>
