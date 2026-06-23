@@ -24,12 +24,13 @@ app.use('/api/prompts', require('./routes/prompts'));
 app.use('/api/ports',   require('./routes/ports'));
 app.use('/api/contact', require('./routes/contact'));
 app.use('/api/certificates', require('./routes/certificates'));
+app.use('/api/dailynotes',  require('./routes/dailynotes'));
 
 // Serve static files (profile image)
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Connect to MongoDB and start server
-const PORT = process.env.PORT || 5665;
+const PORT = process.env.PORT || 7000;
 
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => {

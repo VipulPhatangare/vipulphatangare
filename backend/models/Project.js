@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const projectSchema = new mongoose.Schema({
   title: { type: String, required: true },
   description: { type: String, required: true },
-  category: { type: String, enum: ['web', 'ml', 'agentic', 'genai', 'deeplearning', 'arvr', 'nlp'], required: true },
+  category: { type: String, enum: ['web', 'ml', 'agentic', 'genai', 'deeplearning', 'arvr', 'nlp', 'n8n'], required: true },
   techStack: [{ type: String }],
   demoLink: { type: String, default: '' },
   codeLink: { type: String, default: '' },

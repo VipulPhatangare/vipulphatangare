@@ -142,6 +142,7 @@ export default function ManageProjects() {
                   <option value="deeplearning">Deep Learning</option>
                   <option value="arvr">AR / VR</option>
                   <option value="nlp">NLP</option>
+                  <option value="n8n">n8n</option>
                 </select>
               </div>
               <div className="form-group">

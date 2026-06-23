@@ -62,7 +62,7 @@ export default function ManageProfile() {
           </div>
           <div className="form-group">
             <label>Footer Text</label>
-            <input value={form.footerText} onChange={f('footerText')} placeholder="© 2025 Vipul Phatangare. All rights reserved." />
+            <input value={form.footerText} onChange={f('footerText')} placeholder="© 2026 Vipul Phatangare. All rights reserved." />
           </div>
         </div>
 

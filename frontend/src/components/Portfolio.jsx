@@ -18,8 +18,8 @@ const SECTIONS = [
   { id: 'projects', label: 'Projects',       icon: 'fas fa-code' },
   { id: 'research', label: 'Research',       icon: 'fas fa-file-alt' },
   { id: 'notes',        label: 'Study Material', icon: 'fas fa-book' },
-  { id: 'certificates', label: 'Gallery',   icon: 'fas fa-images' },
-  { id: 'contact',      label: 'Contact',        icon: 'fas fa-envelope' },
+  { id: 'certificates', label: 'Gallery',      icon: 'fas fa-images' },
+{ id: 'contact',      label: 'Contact',        icon: 'fas fa-envelope' },
 ];
 
 export default function Portfolio() {
@@ -160,10 +160,10 @@ export default function Portfolio() {
         {active === 'research' && <Research />}
         {active === 'notes'        && <Notes />}
         {active === 'certificates' && <Certificates />}
-        {active === 'contact'      && <Contact />}
+{active === 'contact'      && <Contact />}
 
         <footer className="footer">
-          <p className="footer-text">© 2025 Vipul Phatangare. All rights reserved.</p>
+          <p className="footer-text">© 2026 Vipul Phatangare. All rights reserved.</p>
         </footer>
       </div>
     </>

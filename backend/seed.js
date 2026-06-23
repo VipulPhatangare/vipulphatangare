@@ -41,7 +41,7 @@ const seed = async () => {
     linkedinUrl: 'https://www.linkedin.com/in/vipul-phatangare-2bba15384/',
     instagramUrl: 'https://www.instagram.com/vipul_phatangare/',
     whatsappUrl: 'https://wa.me/+918999741641',
-    footerText: '© 2025 Vipul Phatangare. All rights reserved.'
+    footerText: '© 2026 Vipul Phatangare. All rights reserved.'
   });
   console.log('Profile created');
 

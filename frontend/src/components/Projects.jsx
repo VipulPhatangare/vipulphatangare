@@ -10,6 +10,7 @@ const FILTERS = [
   { value: 'deeplearning', label: 'Deep Learning' },
   { value: 'arvr',         label: 'AR / VR' },
   { value: 'nlp',          label: 'NLP' },
+  { value: 'n8n',          label: 'n8n' },
 ];
 
 const CAT_CONFIG = {
@@ -20,6 +21,7 @@ const CAT_CONFIG = {
   deeplearning: { label: 'Deep Learning',  color: '#ef4444', icon: 'fas fa-network-wired' },
   arvr:         { label: 'AR / VR',        color: '#06b6d4', icon: 'fas fa-vr-cardboard' },
   nlp:          { label: 'NLP',            color: '#10b981', icon: 'fas fa-language' },
+  n8n:          { label: 'n8n',           color: '#ff6d5a', icon: 'fas fa-sitemap' },
 };
 
 const onSpotlight = (e) => {

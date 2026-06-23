@@ -6,8 +6,9 @@ import ManageChatbot   from './ManageChatbot.jsx';
 import ManageApiKeys   from './ManageApiKeys.jsx';
 import AgentsLayout    from './AgentsLayout.jsx';
 import ManagePrompts   from './ManagePrompts.jsx';
-import ManagePorts     from './ManagePorts.jsx';
-import ManageMessages  from './ManageMessages.jsx';
+import ManagePorts      from './ManagePorts.jsx';
+import ManageMessages   from './ManageMessages.jsx';
+import ManageDailyNotes from './ManageDailyNotes.jsx';
 import PortfolioLayout from './PortfolioLayout.jsx';
 
 const NAV = [
@@ -17,7 +18,8 @@ const NAV = [
   { path: '/admin/apikeys',    label: 'API Keys',     icon: 'fas fa-key' },
   { path: '/admin/agents',     label: 'My Agents',    icon: 'fas fa-brain' },
   { path: '/admin/prompts',    label: 'Prompt Saver', icon: 'fas fa-scroll' },
-  { path: '/admin/ports',      label: 'Used Ports',   icon: 'fas fa-plug' },
+  { path: '/admin/ports',       label: 'Used Ports',   icon: 'fas fa-plug' },
+  { path: '/admin/dailynotes', label: 'Daily Notes',  icon: 'fas fa-journal-whills' },
   { path: '/admin/messages',   label: 'Messages',     icon: 'fas fa-envelope' },
 ];
 
@@ -110,6 +112,7 @@ export default function AdminDashboard() {
           <Route path="/agents/*"     element={<AgentsLayout />} />
           <Route path="/prompts"      element={<ManagePrompts />} />
           <Route path="/ports"        element={<ManagePorts />} />
+          <Route path="/dailynotes"   element={<ManageDailyNotes />} />
           <Route path="/messages"     element={<ManageMessages />} />
         </Routes>
       </main>

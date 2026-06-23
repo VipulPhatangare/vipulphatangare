@@ -9,7 +9,7 @@ const profileSchema = new mongoose.Schema({
   linkedinUrl: { type: String, default: '' },
   instagramUrl: { type: String, default: '' },
   whatsappUrl: { type: String, default: '' },
-  footerText: { type: String, default: '© 2025 Vipul Phatangare. All rights reserved.' }
+  footerText: { type: String, default: '© 2026 Vipul Phatangare. All rights reserved.' }
 }, { timestamps: true });
 
 module.exports = mongoose.model('Profile', profileSchema);
