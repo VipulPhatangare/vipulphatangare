@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react';
 import { useNavigate, Routes, Route, useLocation } from 'react-router-dom';
 import AgentsDashboard from './AgentsDashboard.jsx';
 import LinkedInPostGenerator from './agents/LinkedInPostGenerator.jsx';
+import EmailAnalyser from './agents/EmailAnalyser.jsx';
 
 const AGENT_NAV = [
   { path: '/admin/agents', label: 'Overview', icon: 'fas fa-th-large', exact: true },
   { path: '/admin/agents/linkedin', label: 'LinkedIn Posts', icon: 'fab fa-linkedin' },
+  { path: '/admin/agents/email', label: 'Email Analyser', icon: 'fas fa-envelope-open-text' },
 ];
 
 export default function AgentsLayout() {
@@ -75,6 +77,7 @@ export default function AgentsLayout() {
           <Routes>
             <Route path="/" element={<AgentsDashboard />} />
             <Route path="/linkedin" element={<LinkedInPostGenerator />} />
+            <Route path="/email" element={<EmailAnalyser />} />
           </Routes>
         </div>
       </div>

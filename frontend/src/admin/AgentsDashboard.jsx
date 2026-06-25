@@ -8,6 +8,14 @@ const AGENTS = [
     description: 'Generate 3 short, professional LinkedIn post variants from your portfolio knowledge base. Includes hashtags and one-click copy.',
     path: '/admin/agents/linkedin',
     color: '#0077b5'
+  },
+  {
+    id: 'email',
+    label: 'Email Analyser',
+    icon: 'fas fa-envelope-open-text',
+    description: 'AI-powered email analysis — summarise, classify priority (TNP/College/Work), extract deadlines, generate replies, and send emails.',
+    path: '/admin/agents/email',
+    color: '#8b5cf6'
   }
 ];
 

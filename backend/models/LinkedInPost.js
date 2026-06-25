@@ -1,7 +1,8 @@
 const mongoose = require('mongoose');
 
 const VariantSchema = new mongoose.Schema({
-  content: String,
+  title:    { type: String, default: '' },
+  content:  String,
   hashtags: [String]
 }, { _id: false });
 

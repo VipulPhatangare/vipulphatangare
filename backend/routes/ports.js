@@ -3,9 +3,6 @@ const router = express.Router();
 const auth = require('../middleware/auth');
 const Port = require('../models/Port');
 
-// Clear all preset/legacy data on startup
-Port.deleteMany({}).catch(err => console.error('Port cleanup error:', err.message));
-
 // GET /api/ports — all ports sorted by number
 router.get('/', auth, async (req, res) => {
   try {

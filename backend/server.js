@@ -25,6 +25,7 @@ app.use('/api/ports',   require('./routes/ports'));
 app.use('/api/contact', require('./routes/contact'));
 app.use('/api/certificates', require('./routes/certificates'));
 app.use('/api/dailynotes',  require('./routes/dailynotes'));
+app.use('/api/emails',     require('./routes/emails'));
 
 // Serve static files (profile image)
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));

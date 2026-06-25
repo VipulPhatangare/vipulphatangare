@@ -34,14 +34,14 @@ async function generateLinkedInPosts(userPrompt, chunks, config) {
     variants = JSON.parse(raw);
     if (!Array.isArray(variants)) throw new Error('Response is not an array');
     variants = variants.slice(0, 3).map(v => ({
-      content: String(v.content || '').trim(),
+      title:    String(v.title || '').trim(),
+      content:  String(v.content || '').trim(),
       hashtags: Array.isArray(v.hashtags)
         ? v.hashtags.map(h => String(h).replace(/^#/, '').trim()).filter(Boolean)
         : []
     }));
   } catch {
-    // Graceful fallback: wrap the raw text as a single variant
-    variants = [{ content: raw.slice(0, 500), hashtags: [] }];
+    variants = [{ title: '', content: raw.slice(0, 1000), hashtags: [] }];
   }
 
   return variants;
