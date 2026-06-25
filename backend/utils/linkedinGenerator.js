@@ -3,6 +3,13 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 async function generateLinkedInPosts(userPrompt, chunks, config) {
   const { systemPrompt, modelName, maxTokens } = config;
 
+  console.log('\n========== LINKEDIN GENERATOR DEBUG ==========');
+  console.log('Model    :', modelName);
+  console.log('MaxTokens:', maxTokens);
+  console.log('Chunks   :', chunks.length);
+  console.log('Prompt first 200 chars:', systemPrompt.slice(0, 200));
+  console.log('==============================================\n');
+
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
   const model = genAI.getGenerativeModel({
     model: modelName,
@@ -26,21 +33,34 @@ async function generateLinkedInPosts(userPrompt, chunks, config) {
   const result = await model.generateContent(prompt);
   let raw = result.response.text().trim();
 
+  console.log('\n========== GEMINI RAW RESPONSE START ==========');
+  console.log(raw);
+  console.log('========== GEMINI RAW RESPONSE END ============\n');
+
   // Strip markdown code fences if Gemini wraps the output
   raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
 
   let variants;
   try {
-    variants = JSON.parse(raw);
-    if (!Array.isArray(variants)) throw new Error('Response is not an array');
-    variants = variants.slice(0, 3).map(v => ({
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) throw new Error('Response is not an array');
+    variants = parsed.slice(0, 3).map(v => ({
       title:    String(v.title || '').trim(),
       content:  String(v.content || '').trim(),
       hashtags: Array.isArray(v.hashtags)
         ? v.hashtags.map(h => String(h).replace(/^#/, '').trim()).filter(Boolean)
         : []
     }));
-  } catch {
+    console.log('✅ Parsed variants:');
+    variants.forEach((v, i) => {
+      console.log(`\n--- Variant ${i + 1} ---`);
+      console.log('title   :', v.title);
+      console.log('content :', v.content.slice(0, 120), '...');
+      console.log('hashtags:', v.hashtags);
+    });
+  } catch (err) {
+    console.error('❌ JSON parse failed:', err.message);
+    console.log('Falling back to raw text variant');
     variants = [{ title: '', content: raw.slice(0, 1000), hashtags: [] }];
   }
 
