@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import api from '../../api/axios.js';
 
 // ── HELPERS ─────────────────────────────────────────────
@@ -10,26 +10,32 @@ const PRIORITY_META = {
 };
 
 const CATEGORY_META = {
-  tnp:      { label: 'TNP / Placement', icon: 'fas fa-briefcase',    color: '#8b5cf6' },
+  tnp:      { label: 'TNP / Placement', icon: 'fas fa-briefcase',      color: '#8b5cf6' },
   college:  { label: 'College',         icon: 'fas fa-graduation-cap', color: '#3b82f6' },
-  personal: { label: 'Personal',        icon: 'fas fa-user',          color: '#ec4899' },
-  work:     { label: 'Work',            icon: 'fas fa-laptop-code',   color: '#14b8a6' },
-  general:  { label: 'General',         icon: 'fas fa-envelope',      color: '#94a3b8' }
+  personal: { label: 'Personal',        icon: 'fas fa-user',           color: '#ec4899' },
+  work:     { label: 'Work',            icon: 'fas fa-laptop-code',    color: '#14b8a6' },
+  general:  { label: 'General',         icon: 'fas fa-envelope',       color: '#94a3b8' }
+};
+
+const REPLY_URGENCY_META = {
+  immediate:    { label: 'Reply ASAP',      color: '#ef4444', icon: 'fas fa-exclamation-circle' },
+  within_24h:   { label: 'Reply within 24h', color: '#f59e0b', icon: 'fas fa-clock' },
+  within_3days: { label: 'Reply in 3 days', color: '#3b82f6', icon: 'fas fa-reply' },
+  none:         null
 };
 
 function deadlineDays(date) {
   if (!date) return null;
-  const diff = Math.ceil((new Date(date) - new Date()) / 86400000);
-  return diff;
+  return Math.ceil((new Date(date) - new Date()) / 86400000);
 }
 
 function DeadlineBadge({ deadline, deadlineText }) {
   if (!deadline) return null;
   const days = deadlineDays(deadline);
   let color = '#22c55e', bg = 'rgba(34,197,94,0.12)', icon = 'fas fa-calendar-check';
-  if (days < 0)  { color = '#94a3b8'; bg = 'rgba(148,163,184,0.12)'; icon = 'fas fa-calendar-times'; }
-  else if (days <= 2) { color = '#ef4444'; bg = 'rgba(239,68,68,0.12)'; icon = 'fas fa-exclamation-triangle'; }
-  else if (days <= 7) { color = '#f59e0b'; bg = 'rgba(245,158,11,0.12)'; icon = 'fas fa-clock'; }
+  if (days < 0)       { color = '#94a3b8'; bg = 'rgba(148,163,184,0.12)'; icon = 'fas fa-calendar-times'; }
+  else if (days <= 2) { color = '#ef4444'; bg = 'rgba(239,68,68,0.12)';   icon = 'fas fa-exclamation-triangle'; }
+  else if (days <= 7) { color = '#f59e0b'; bg = 'rgba(245,158,11,0.12)';  icon = 'fas fa-clock'; }
 
   return (
     <span className="em-badge" style={{ color, background: bg, border: `1px solid ${color}33` }}>
@@ -58,12 +64,39 @@ function CategoryBadge({ category }) {
   );
 }
 
-// ── EMAIL INBOX CARD ─────────────────────────────────────
+function ReplyUrgencyBadge({ urgency }) {
+  const m = REPLY_URGENCY_META[urgency];
+  if (!m) return null;
+  return (
+    <span className="em-badge" style={{ color: m.color, background: `${m.color}15`, border: `1px solid ${m.color}33` }}>
+      <i className={m.icon}></i> {m.label}
+    </span>
+  );
+}
 
-function EmailCard({ email, onStatusChange, onDelete }) {
-  const [expanded, setExpanded] = useState(false);
+function FollowUpBadge({ followUpDate }) {
+  if (!followUpDate) return null;
+  const days = deadlineDays(followUpDate);
+  const color = days < 0 ? '#94a3b8' : days <= 1 ? '#f59e0b' : '#a78bfa';
+  return (
+    <span className="em-badge" style={{ color, background: `${color}15`, border: `1px solid ${color}33` }}>
+      <i className="fas fa-bell"></i>
+      {days < 0 ? 'Follow-up overdue' : days === 0 ? 'Follow up today' : `Follow up in ${days}d`}
+    </span>
+  );
+}
+
+// ── EMAIL CARD ───────────────────────────────────────────
+
+function EmailCard({ email, onStatusChange, onDelete, onUpdate }) {
+  const [expanded, setExpanded]     = useState(false);
   const [delConfirm, setDelConfirm] = useState(false);
-  const [updating, setUpdating] = useState(false);
+  const [updating, setUpdating]     = useState(false);
+  const [followUpDate, setFollowUpDate] = useState(
+    email.followUpDate ? new Date(email.followUpDate).toISOString().slice(0, 10) : ''
+  );
+  const [followUpNote, setFollowUpNote] = useState(email.followUpNote || '');
+  const [savingFollowUp, setSavingFollowUp] = useState(false);
 
   const updateStatus = async (status) => {
     setUpdating(true);
@@ -78,6 +111,31 @@ function EmailCard({ email, onStatusChange, onDelete }) {
   const handleDelete = async () => {
     try { await api.delete(`/emails/${email._id}`); onDelete(email._id); }
     catch { /* ignore */ }
+  };
+
+  const handleSaveFollowUp = async () => {
+    setSavingFollowUp(true);
+    try {
+      const updated = await api.patch(`/emails/${email._id}`, {
+        followUpDate: followUpDate ? new Date(followUpDate).toISOString() : null,
+        followUpNote
+      });
+      onUpdate(email._id, updated.data);
+    } finally {
+      setSavingFollowUp(false);
+    }
+  };
+
+  const handleClearFollowUp = async () => {
+    setFollowUpDate('');
+    setFollowUpNote('');
+    setSavingFollowUp(true);
+    try {
+      const updated = await api.patch(`/emails/${email._id}`, { followUpDate: null, followUpNote: '' });
+      onUpdate(email._id, updated.data);
+    } finally {
+      setSavingFollowUp(false);
+    }
   };
 
   const isUnread = email.status === 'unread';
@@ -119,11 +177,15 @@ function EmailCard({ email, onStatusChange, onDelete }) {
         <div className="em-card-badges">
           <PriorityBadge priority={email.priority} />
           <CategoryBadge category={email.category} />
-          {email.deadline && (
-            <DeadlineBadge deadline={email.deadline} deadlineText={email.deadlineText} />
+          {email.requiresReply && <ReplyUrgencyBadge urgency={email.replyUrgency} />}
+          {email.deadline && <DeadlineBadge deadline={email.deadline} deadlineText={email.deadlineText} />}
+          {email.followUpDate && <FollowUpBadge followUpDate={email.followUpDate} />}
+          {email.actionItems?.length > 0 && (
+            <span className="em-badge" style={{ color: '#34d399', background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.25)' }}>
+              <i className="fas fa-tasks"></i> {email.actionItems.length} action{email.actionItems.length > 1 ? 's' : ''}
+            </span>
           )}
         </div>
-
       </div>
 
       {expanded && (
@@ -134,6 +196,23 @@ function EmailCard({ email, onStatusChange, onDelete }) {
             <div className="em-summary-box">
               <div className="em-summary-label"><i className="fas fa-robot"></i> AI Summary</div>
               <p>{email.summary}</p>
+            </div>
+          )}
+
+          {/* Action Items */}
+          {email.actionItems?.length > 0 && (
+            <div className="em-action-items-box">
+              <div className="em-summary-label" style={{ color: '#34d399' }}>
+                <i className="fas fa-tasks"></i> Action Items
+              </div>
+              <ul className="em-action-list">
+                {email.actionItems.map((item, i) => (
+                  <li key={i} className="em-action-item">
+                    <i className="fas fa-arrow-right"></i>
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 
@@ -158,14 +237,52 @@ function EmailCard({ email, onStatusChange, onDelete }) {
             </div>
           )}
 
+          {/* Follow-up Tracker */}
+          <div className="em-followup-section">
+            <div className="em-followup-header">
+              <span className="em-summary-label" style={{ color: '#a78bfa', margin: 0 }}>
+                <i className="fas fa-bell"></i> Follow-up Tracker
+              </span>
+              {email.followUpDate && (
+                <button className="em-followup-clear" onClick={handleClearFollowUp} disabled={savingFollowUp}>
+                  <i className="fas fa-times"></i> Clear
+                </button>
+              )}
+            </div>
+            <div className="em-followup-fields">
+              <input
+                type="date"
+                className="em-followup-date"
+                value={followUpDate}
+                onChange={e => setFollowUpDate(e.target.value)}
+              />
+              <input
+                type="text"
+                className="em-followup-note"
+                value={followUpNote}
+                onChange={e => setFollowUpNote(e.target.value)}
+                placeholder="Note — e.g. 'Check if they replied'"
+              />
+              <button
+                className="em-followup-save"
+                onClick={handleSaveFollowUp}
+                disabled={savingFollowUp || !followUpDate}
+              >
+                {savingFollowUp
+                  ? <i className="fas fa-spinner fa-spin"></i>
+                  : <><i className="fas fa-bell"></i> Set Reminder</>}
+              </button>
+            </div>
+          </div>
+
           {/* Actions */}
           <div className="em-card-actions">
             <div className="em-status-btns">
               {[
-                { val: 'unread',   icon: 'fa-circle',        label: 'Unread'   },
-                { val: 'read',     icon: 'fa-check',         label: 'Read'     },
-                { val: 'replied',  icon: 'fa-reply',         label: 'Replied'  },
-                { val: 'archived', icon: 'fa-archive',       label: 'Archived' },
+                { val: 'unread',   icon: 'fa-circle',  label: 'Unread'   },
+                { val: 'read',     icon: 'fa-check',   label: 'Read'     },
+                { val: 'replied',  icon: 'fa-reply',   label: 'Replied'  },
+                { val: 'archived', icon: 'fa-archive', label: 'Archived' },
               ].map(s => (
                 <button
                   key={s.val}
@@ -257,6 +374,9 @@ function AnalyzeTab({ flash }) {
         deadline:     analysis?.deadline || null,
         deadlineText: analysis?.deadlineText || '',
         tags:         analysis?.tags || [],
+        actionItems:  analysis?.actionItems || [],
+        requiresReply: analysis?.requiresReply || false,
+        replyUrgency:  analysis?.replyUrgency || 'none',
         status:       'unread',
         direction:    'incoming'
       });
@@ -319,8 +439,7 @@ function AnalyzeTab({ flash }) {
             >
               {analyzing
                 ? <><i className="fas fa-spinner fa-spin"></i> Analysing…</>
-                : <><i className="fas fa-magic"></i> Analyse Email</>
-              }
+                : <><i className="fas fa-magic"></i> Analyse Email</>}
             </button>
           </form>
         </div>
@@ -331,7 +450,7 @@ function AnalyzeTab({ flash }) {
         {!analysis && !analyzing && (
           <div className="em-empty-state">
             <i className="fas fa-envelope-open-text"></i>
-            <p>Paste an email and click Analyse to get AI-powered insights — summary, priority, category, and deadline extraction.</p>
+            <p>Paste an email and click Analyse to get AI insights — summary, priority, category, action items, deadline extraction and reply urgency.</p>
           </div>
         )}
 
@@ -344,7 +463,7 @@ function AnalyzeTab({ flash }) {
 
         {analysis && !analyzing && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {/* Priority + Category */}
+            {/* Priority + Category + Reply urgency */}
             <div className="stat-card">
               <h3 className="chatbot-section-title" style={{ marginBottom: '1rem' }}>
                 <i className="fas fa-chart-bar"></i> Classification
@@ -358,6 +477,12 @@ function AnalyzeTab({ flash }) {
                   <span className="em-result-label">Category</span>
                   <CategoryBadge category={analysis.category} />
                 </div>
+                {analysis.requiresReply && (
+                  <div className="em-result-badge-group">
+                    <span className="em-result-label">Reply</span>
+                    <ReplyUrgencyBadge urgency={analysis.replyUrgency} />
+                  </div>
+                )}
               </div>
 
               {analysis.deadline && (
@@ -382,6 +507,23 @@ function AnalyzeTab({ flash }) {
               <p style={{ lineHeight: 1.7, color: 'var(--text-primary)', margin: 0 }}>{analysis.summary}</p>
             </div>
 
+            {/* Action Items */}
+            {analysis.actionItems?.length > 0 && (
+              <div className="stat-card">
+                <h3 className="chatbot-section-title" style={{ marginBottom: '0.75rem', color: '#34d399' }}>
+                  <i className="fas fa-tasks"></i> Action Items
+                </h3>
+                <ul className="em-action-list">
+                  {analysis.actionItems.map((item, i) => (
+                    <li key={i} className="em-action-item">
+                      <i className="fas fa-arrow-right"></i>
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             {/* Reply Generator */}
             <div className="stat-card">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
@@ -396,8 +538,7 @@ function AnalyzeTab({ flash }) {
                 >
                   {genReply
                     ? <><i className="fas fa-spinner fa-spin"></i> Generating…</>
-                    : <><i className="fas fa-magic"></i> Generate Reply</>
-                  }
+                    : <><i className="fas fa-magic"></i> Generate Reply</>}
                 </button>
               </div>
 
@@ -435,8 +576,7 @@ function AnalyzeTab({ flash }) {
             >
               {saving
                 ? <><i className="fas fa-spinner fa-spin"></i> Saving…</>
-                : <><i className="fas fa-save"></i> Save to Inbox</>
-              }
+                : <><i className="fas fa-save"></i> Save to Inbox</>}
             </button>
           </div>
         )}
@@ -447,27 +587,33 @@ function AnalyzeTab({ flash }) {
 
 // ── INBOX TAB ────────────────────────────────────────────
 
-function InboxTab({ flash }) {
-  const [emails, setEmails]       = useState([]);
-  const [loading, setLoading]     = useState(true);
-  const [filters, setFilters]     = useState({ priority: '', category: '', status: '', hasDeadline: '' });
-  const [page, setPage]           = useState(1);
-  const [pages, setPages]         = useState(1);
-  const [total, setTotal]         = useState(0);
+const EMPTY_FILTERS = { search: '', priority: '', category: '', status: '', hasDeadline: false, requiresReply: false };
 
-  // Gmail sync state
-  const [syncDays, setSyncDays]   = useState(7);
-  const [syncing, setSyncing]     = useState(false);
+function InboxTab({ flash }) {
+  const [emails, setEmails]         = useState([]);
+  const [loading, setLoading]       = useState(true);
+  const [filters, setFilters]       = useState(EMPTY_FILTERS);
+  const [searchInput, setSearchInput] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+  const [page, setPage]             = useState(1);
+  const [pages, setPages]           = useState(1);
+  const [total, setTotal]           = useState(0);
+  const [syncDays, setSyncDays]     = useState(7);
+  const [syncing, setSyncing]       = useState(false);
   const [syncResult, setSyncResult] = useState(null);
+  const [reanalyzing, setReanalyzing] = useState(false);
+  const searchTimer = useRef(null);
 
   const load = async (p = 1, f = filters) => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ page: p });
+      if (f.search)      params.set('q', f.search);
       if (f.priority)    params.set('priority', f.priority);
       if (f.category)    params.set('category', f.category);
       if (f.status)      params.set('status', f.status);
-      if (f.hasDeadline) params.set('hasDeadline', f.hasDeadline);
+      if (f.hasDeadline) params.set('hasDeadline', 'true');
+      if (f.requiresReply) params.set('requiresReply', 'true');
       const { data } = await api.get(`/emails?${params}`);
       setEmails(data.emails);
       setPage(data.page);
@@ -488,6 +634,28 @@ function InboxTab({ flash }) {
     load(1, f);
   };
 
+  const applyToggleFilter = (key) => {
+    const f = { ...filters, [key]: !filters[key] };
+    setFilters(f);
+    load(1, f);
+  };
+
+  const clearFilters = () => {
+    setFilters(EMPTY_FILTERS);
+    setSearchInput('');
+    load(1, EMPTY_FILTERS);
+  };
+
+  const handleSearchChange = (val) => {
+    setSearchInput(val);
+    clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => {
+      const f = { ...filters, search: val };
+      setFilters(f);
+      load(1, f);
+    }, 400);
+  };
+
   const handleStatusChange = (id, status) => {
     setEmails(prev => prev.map(e => e._id === id ? { ...e, status } : e));
   };
@@ -496,6 +664,10 @@ function InboxTab({ flash }) {
     setEmails(prev => prev.filter(e => e._id !== id));
     setTotal(t => t - 1);
     flash('success', 'Email deleted');
+  };
+
+  const handleUpdate = (id, updated) => {
+    setEmails(prev => prev.map(e => e._id === id ? updated : e));
   };
 
   const handleGmailSync = async () => {
@@ -517,20 +689,35 @@ function InboxTab({ flash }) {
     }
   };
 
-  const FILTER_PILLS = [
-    { key: 'priority', val: '',       label: 'All Priority' },
-    { key: 'priority', val: 'high',   label: '🔴 High' },
-    { key: 'priority', val: 'medium', label: '🟡 Medium' },
-    { key: 'priority', val: 'low',    label: '🟢 Low' },
-  ];
+  const handleBulkReanalyze = async () => {
+    setReanalyzing(true);
+    try {
+      const { data } = await api.post('/emails/bulk-reanalyze');
+      flash('success', `Re-analysed ${data.reanalyzed} email${data.reanalyzed !== 1 ? 's' : ''}`);
+      if (data.reanalyzed > 0) load(1, filters);
+    } catch (err) {
+      flash('error', err.response?.data?.error || 'Re-analyse failed');
+    } finally {
+      setReanalyzing(false);
+    }
+  };
 
-  const CAT_PILLS = [
-    { key: 'category', val: '',         label: 'All' },
-    { key: 'category', val: 'tnp',      label: '💼 TNP' },
-    { key: 'category', val: 'college',  label: '🎓 College' },
-    { key: 'category', val: 'work',     label: '💻 Work' },
-    { key: 'category', val: 'personal', label: '👤 Personal' },
-  ];
+  // Compute active filters as chips
+  const activeChips = [];
+  if (filters.search)      activeChips.push({ key: 'search',      label: `"${filters.search}"` });
+  if (filters.priority)    activeChips.push({ key: 'priority',    label: `${PRIORITY_META[filters.priority]?.label} Priority` });
+  if (filters.category)    activeChips.push({ key: 'category',    label: CATEGORY_META[filters.category]?.label });
+  if (filters.status)      activeChips.push({ key: 'status',      label: filters.status.charAt(0).toUpperCase() + filters.status.slice(1) });
+  if (filters.hasDeadline) activeChips.push({ key: 'hasDeadline', label: 'Has Deadline' });
+  if (filters.requiresReply) activeChips.push({ key: 'requiresReply', label: 'Needs Reply' });
+
+  const removeChip = (key) => {
+    const resetVal = (key === 'hasDeadline' || key === 'requiresReply') ? false : '';
+    const f = { ...filters, [key]: resetVal };
+    setFilters(f);
+    if (key === 'search') setSearchInput('');
+    load(1, f);
+  };
 
   return (
     <div className="chatbot-panel">
@@ -544,6 +731,17 @@ function InboxTab({ flash }) {
             <span className="em-sync-subtitle">Fetches emails, runs AI analysis, saves to inbox automatically</span>
           </div>
           <div className="em-sync-controls">
+            <button
+              className="btn-secondary"
+              style={{ fontSize: '0.78rem', padding: '0.35rem 0.8rem' }}
+              onClick={handleBulkReanalyze}
+              disabled={reanalyzing}
+              title="Re-run AI analysis on emails that failed during sync"
+            >
+              {reanalyzing
+                ? <><i className="fas fa-spinner fa-spin"></i> Re-analysing…</>
+                : <><i className="fas fa-redo"></i> Re-analyse</>}
+            </button>
             <div className="em-sync-days-wrap">
               <span className="em-sync-days-label">Last</span>
               <select
@@ -557,20 +755,14 @@ function InboxTab({ flash }) {
                 ))}
               </select>
             </div>
-            <button
-              className="btn-primary em-sync-btn"
-              onClick={handleGmailSync}
-              disabled={syncing}
-            >
+            <button className="btn-primary" onClick={handleGmailSync} disabled={syncing}>
               {syncing
                 ? <><i className="fas fa-spinner fa-spin"></i> Syncing…</>
-                : <><i className="fas fa-cloud-download-alt"></i> Sync Now</>
-              }
+                : <><i className="fas fa-cloud-download-alt"></i> Sync Now</>}
             </button>
           </div>
         </div>
 
-        {/* Sync in progress */}
         {syncing && (
           <div className="em-sync-progress">
             <div className="em-sync-progress-bar">
@@ -589,7 +781,6 @@ function InboxTab({ flash }) {
           </div>
         )}
 
-        {/* Sync result */}
         {syncResult && !syncing && (
           <div className="em-sync-result">
             <div className="em-sync-stat">
@@ -615,18 +806,15 @@ function InboxTab({ flash }) {
             <i className="fas fa-inbox"></i> Inbox
             <span className="chatbot-count">{total}</span>
           </h3>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
             <button
-              className={`em-filter-pill${filters.hasDeadline === 'true' ? ' active' : ''}`}
-              onClick={() => applyFilter('hasDeadline', filters.hasDeadline === 'true' ? '' : 'true')}
+              className={`em-filter-pill${showFilters ? ' active' : ''}`}
+              onClick={() => setShowFilters(s => !s)}
             >
-              <i className="fas fa-clock"></i> Has Deadline
-            </button>
-            <button
-              className={`em-filter-pill${filters.status === 'unread' ? ' active' : ''}`}
-              onClick={() => applyFilter('status', filters.status === 'unread' ? '' : 'unread')}
-            >
-              <i className="fas fa-circle"></i> Unread
+              <i className="fas fa-sliders-h"></i> Filters
+              {activeChips.length > 0 && (
+                <span className="em-filter-count">{activeChips.length}</span>
+              )}
             </button>
             <button className="btn-secondary" onClick={() => load(page)}>
               <i className="fas fa-sync-alt"></i>
@@ -634,35 +822,105 @@ function InboxTab({ flash }) {
           </div>
         </div>
 
-        {/* Filter pills */}
-        <div className="em-filter-row">
-          {FILTER_PILLS.map(p => (
-            <button
-              key={p.label}
-              className={`em-filter-pill${filters.priority === p.val && p.key === 'priority' ? ' active' : ''}`}
-              onClick={() => applyFilter(p.key, p.val)}
-            >
-              {p.label}
+        {/* Search bar */}
+        <div className="em-search-wrap">
+          <i className="fas fa-search em-search-icon"></i>
+          <input
+            type="text"
+            className="em-search-input"
+            placeholder="Search by subject, sender, or tag…"
+            value={searchInput}
+            onChange={e => handleSearchChange(e.target.value)}
+          />
+          {searchInput && (
+            <button className="em-search-clear" onClick={() => handleSearchChange('')}>
+              <i className="fas fa-times"></i>
             </button>
-          ))}
-          <span className="em-filter-divider">|</span>
-          {CAT_PILLS.map(p => (
-            <button
-              key={p.label}
-              className={`em-filter-pill${filters.category === p.val && p.key === 'category' ? ' active' : ''}`}
-              onClick={() => applyFilter(p.key, p.val)}
-            >
-              {p.label}
-            </button>
-          ))}
+          )}
         </div>
+
+        {/* Active filter chips */}
+        {activeChips.length > 0 && (
+          <div className="em-active-chips">
+            {activeChips.map(chip => (
+              <span key={chip.key} className="em-active-chip">
+                {chip.label}
+                <button className="em-chip-remove" onClick={() => removeChip(chip.key)}>
+                  <i className="fas fa-times"></i>
+                </button>
+              </span>
+            ))}
+            <button className="em-clear-all" onClick={clearFilters}>
+              Clear all
+            </button>
+          </div>
+        )}
+
+        {/* Collapsible filter panel */}
+        {showFilters && (
+          <div className="em-filter-panel">
+            <div className="em-filter-group">
+              <span className="em-filter-group-label">Priority</span>
+              <div className="em-filter-pills-row">
+                {[{ val: '', label: 'All' }, { val: 'high', label: '🔴 High' }, { val: 'medium', label: '🟡 Medium' }, { val: 'low', label: '🟢 Low' }].map(p => (
+                  <button
+                    key={p.val}
+                    className={`em-filter-pill${filters.priority === p.val ? ' active' : ''}`}
+                    onClick={() => applyFilter('priority', p.val)}
+                  >{p.label}</button>
+                ))}
+              </div>
+            </div>
+            <div className="em-filter-group">
+              <span className="em-filter-group-label">Category</span>
+              <div className="em-filter-pills-row">
+                {[{ val: '', label: 'All' }, { val: 'tnp', label: '💼 TNP' }, { val: 'college', label: '🎓 College' }, { val: 'work', label: '💻 Work' }, { val: 'personal', label: '👤 Personal' }, { val: 'general', label: '📧 General' }].map(p => (
+                  <button
+                    key={p.val}
+                    className={`em-filter-pill${filters.category === p.val ? ' active' : ''}`}
+                    onClick={() => applyFilter('category', p.val)}
+                  >{p.label}</button>
+                ))}
+              </div>
+            </div>
+            <div className="em-filter-group">
+              <span className="em-filter-group-label">Status</span>
+              <div className="em-filter-pills-row">
+                {[{ val: '', label: 'All' }, { val: 'unread', label: 'Unread' }, { val: 'read', label: 'Read' }, { val: 'replied', label: 'Replied' }, { val: 'archived', label: 'Archived' }].map(p => (
+                  <button
+                    key={p.val}
+                    className={`em-filter-pill${filters.status === p.val ? ' active' : ''}`}
+                    onClick={() => applyFilter('status', p.val)}
+                  >{p.label}</button>
+                ))}
+              </div>
+            </div>
+            <div className="em-filter-group">
+              <span className="em-filter-group-label">Quick</span>
+              <div className="em-filter-pills-row">
+                <button
+                  className={`em-filter-pill${filters.hasDeadline ? ' active' : ''}`}
+                  onClick={() => applyToggleFilter('hasDeadline')}
+                >
+                  <i className="fas fa-clock"></i> Has Deadline
+                </button>
+                <button
+                  className={`em-filter-pill${filters.requiresReply ? ' active' : ''}`}
+                  onClick={() => applyToggleFilter('requiresReply')}
+                >
+                  <i className="fas fa-reply"></i> Needs Reply
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {loading ? (
           <div className="loading-spinner"><div className="spinner"></div></div>
         ) : emails.length === 0 ? (
           <div className="chatbot-empty">
             <i className="fas fa-inbox"></i>
-            <p>No emails yet. Click "Sync Now" above to fetch your Gmail inbox, or use the Analyse tab to manually add emails.</p>
+            <p>{activeChips.length > 0 ? 'No emails match your filters.' : 'No emails yet. Click "Sync Now" above to fetch your Gmail inbox.'}</p>
           </div>
         ) : (
           <>
@@ -673,6 +931,7 @@ function InboxTab({ flash }) {
                   email={email}
                   onStatusChange={handleStatusChange}
                   onDelete={handleDelete}
+                  onUpdate={handleUpdate}
                 />
               ))}
             </div>
@@ -694,17 +953,121 @@ function InboxTab({ flash }) {
   );
 }
 
+// ── DIGEST TAB ───────────────────────────────────────────
+
+function DigestTab({ flash }) {
+  const [loading, setLoading]   = useState(false);
+  const [digest, setDigest]     = useState(null);
+  const [stats, setStats]       = useState(null);
+
+  const generateDigest = async () => {
+    setLoading(true);
+    setDigest(null);
+    setStats(null);
+    try {
+      const { data } = await api.get('/emails/digest');
+      setDigest(data.digest);
+      setStats(data.stats);
+    } catch (err) {
+      flash('error', err.response?.data?.error || 'Digest generation failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="chatbot-panel">
+      <div className="stat-card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+          <div>
+            <h3 className="chatbot-section-title" style={{ margin: 0 }}>
+              <i className="fas fa-newspaper"></i> Daily Digest
+            </h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.83rem', margin: '0.3rem 0 0' }}>
+              AI reads all your unread emails and gives you a smart summary of what matters
+            </p>
+          </div>
+          <button className="btn-primary" onClick={generateDigest} disabled={loading} style={{ flexShrink: 0 }}>
+            {loading
+              ? <><i className="fas fa-spinner fa-spin"></i> Generating…</>
+              : <><i className="fas fa-magic"></i> Generate Digest</>}
+          </button>
+        </div>
+
+        {!digest && !loading && (
+          <div className="em-empty-state" style={{ minHeight: 180 }}>
+            <i className="fas fa-newspaper"></i>
+            <p>Click "Generate Digest" to get an AI-powered briefing of your unread inbox — what's urgent, what needs action, and what can wait.</p>
+          </div>
+        )}
+
+        {loading && (
+          <div className="em-empty-state" style={{ minHeight: 180 }}>
+            <div className="spinner"></div>
+            <p>Reading your inbox and generating briefing…</p>
+          </div>
+        )}
+
+        {stats && !loading && (
+          <div className="em-digest-stats">
+            <div className="em-digest-stat">
+              <i className="em-digest-stat-icon fas fa-inbox"></i>
+              <span className="em-digest-stat-num">{stats.total}</span>
+              <span className="em-digest-stat-label">Unread</span>
+            </div>
+            <div className="em-digest-stat em-digest-stat-high">
+              <i className="em-digest-stat-icon fas fa-fire"></i>
+              <span className="em-digest-stat-num">{stats.high}</span>
+              <span className="em-digest-stat-label">High Priority</span>
+            </div>
+            <div className="em-digest-stat em-digest-stat-reply">
+              <i className="em-digest-stat-icon fas fa-reply"></i>
+              <span className="em-digest-stat-num">{stats.needsReply}</span>
+              <span className="em-digest-stat-label">Needs Reply</span>
+            </div>
+            <div className="em-digest-stat em-digest-stat-deadline">
+              <i className="em-digest-stat-icon fas fa-clock"></i>
+              <span className="em-digest-stat-num">{stats.withDeadline}</span>
+              <span className="em-digest-stat-label">Deadlines</span>
+            </div>
+            <div className="em-digest-stat em-digest-stat-action">
+              <i className="em-digest-stat-icon fas fa-tasks"></i>
+              <span className="em-digest-stat-num">{stats.actionCount}</span>
+              <span className="em-digest-stat-label">Actions</span>
+            </div>
+          </div>
+        )}
+
+        {digest && !loading && (
+          <div className="em-digest-output">
+            <div className="em-summary-label" style={{ marginBottom: '0.6rem' }}>
+              <i className="fas fa-robot"></i> AI Briefing
+            </div>
+            <pre className="em-digest-text">{digest}</pre>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── DEADLINES TAB ────────────────────────────────────────
 
 function DeadlinesTab({ flash }) {
-  const [emails, setEmails]   = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [emails, setEmails]     = useState([]);
+  const [followUps, setFollowUps] = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [tab, setTab]           = useState('deadlines');
 
   const load = async () => {
     setLoading(true);
     try {
-      const { data } = await api.get('/emails/deadlines');
-      setEmails(data);
+      const [dlRes, fuRes] = await Promise.all([
+        api.get('/emails/deadlines'),
+        api.get('/emails/followups')
+      ]);
+      setEmails(dlRes.data);
+      setFollowUps(fuRes.data);
     } catch {
       flash('error', 'Failed to load deadlines');
     } finally {
@@ -715,12 +1078,15 @@ function DeadlinesTab({ flash }) {
   useEffect(() => { load(); }, []);
 
   const now = new Date();
-
   const overdue  = emails.filter(e => e.deadline && new Date(e.deadline) < now);
   const upcoming = emails.filter(e => e.deadline && new Date(e.deadline) >= now);
 
-  const DeadlineItem = ({ email }) => {
-    const days = deadlineDays(email.deadline);
+  const fuOverdue  = followUps.filter(e => e.followUpDate && new Date(e.followUpDate) < now);
+  const fuUpcoming = followUps.filter(e => e.followUpDate && new Date(e.followUpDate) >= now);
+
+  const DeadlineItem = ({ email, dateField = 'deadline', textField = 'deadlineText' }) => {
+    const rawDate = email[dateField];
+    const days = deadlineDays(rawDate);
     let urgency = 'safe';
     if (days < 0) urgency = 'overdue';
     else if (days <= 2) urgency = 'urgent';
@@ -730,11 +1096,10 @@ function DeadlinesTab({ flash }) {
       overdue: { border: '#ef444466', bg: 'rgba(239,68,68,0.05)', text: '#ef4444' },
       urgent:  { border: '#ef444466', bg: 'rgba(239,68,68,0.05)', text: '#ef4444' },
       warning: { border: '#f59e0b66', bg: 'rgba(245,158,11,0.05)', text: '#f59e0b' },
-      safe:    { border: '#22c55e44', bg: 'rgba(34,197,94,0.05)',  text: '#22c55e' }
+      safe:    { border: '#22c55e44', bg: 'rgba(34,197,94,0.05)', text: '#22c55e' }
     };
     const c = colors[urgency];
-
-    const dateStr = new Date(email.deadline).toLocaleDateString('en-IN', {
+    const dateStr = new Date(rawDate).toLocaleDateString('en-IN', {
       weekday: 'short', day: 'numeric', month: 'short', year: 'numeric'
     });
 
@@ -747,9 +1112,10 @@ function DeadlinesTab({ flash }) {
           <div>
             <div className="em-deadline-subject">{email.subject}</div>
             <div className="em-deadline-meta">
-              {email.deadlineText && <span><i className="fas fa-clock"></i> {email.deadlineText}</span>}
+              {email[textField] && <span><i className="fas fa-clock"></i> {email[textField]}</span>}
               <span><i className="fas fa-calendar-alt"></i> {dateStr}</span>
               {email.from && <span><i className="fas fa-user-circle"></i> {email.from}</span>}
+              {email.followUpNote && <span><i className="fas fa-sticky-note"></i> {email.followUpNote}</span>}
             </div>
           </div>
         </div>
@@ -766,37 +1132,90 @@ function DeadlinesTab({ flash }) {
 
   return (
     <div className="chatbot-panel">
-      {emails.length === 0 ? (
-        <div className="chatbot-empty">
-          <i className="fas fa-calendar-check"></i>
-          <p>No deadlines found. Analyse emails with deadlines and save them to track here.</p>
-        </div>
-      ) : (
-        <>
-          {overdue.length > 0 && (
-            <div className="stat-card" style={{ marginBottom: '1rem' }}>
-              <h3 className="chatbot-section-title" style={{ color: '#ef4444' }}>
-                <i className="fas fa-exclamation-triangle"></i> Overdue
-                <span className="chatbot-count" style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444' }}>{overdue.length}</span>
-              </h3>
-              <div className="em-deadline-list">
-                {overdue.map(e => <DeadlineItem key={e._id} email={e} />)}
-              </div>
-            </div>
-          )}
+      {/* Sub-tabs */}
+      <div className="em-sub-tabs">
+        <button
+          className={`em-sub-tab${tab === 'deadlines' ? ' active' : ''}`}
+          onClick={() => setTab('deadlines')}
+        >
+          <i className="fas fa-clock"></i> Deadlines
+          {emails.length > 0 && <span className="chatbot-count" style={{ fontSize: '0.72rem', padding: '1px 6px' }}>{emails.length}</span>}
+        </button>
+        <button
+          className={`em-sub-tab${tab === 'followups' ? ' active' : ''}`}
+          onClick={() => setTab('followups')}
+        >
+          <i className="fas fa-bell"></i> Follow-ups
+          {followUps.length > 0 && <span className="chatbot-count" style={{ fontSize: '0.72rem', padding: '1px 6px', background: 'rgba(167,139,250,0.2)', color: '#a78bfa' }}>{followUps.length}</span>}
+        </button>
+      </div>
 
-          {upcoming.length > 0 && (
-            <div className="stat-card">
-              <h3 className="chatbot-section-title">
-                <i className="fas fa-calendar-alt"></i> Upcoming
-                <span className="chatbot-count">{upcoming.length}</span>
-              </h3>
-              <div className="em-deadline-list">
-                {upcoming.map(e => <DeadlineItem key={e._id} email={e} />)}
+      {tab === 'deadlines' && (
+        emails.length === 0 ? (
+          <div className="chatbot-empty">
+            <i className="fas fa-calendar-check"></i>
+            <p>No deadlines found. Analyse emails with deadlines and save them to track here.</p>
+          </div>
+        ) : (
+          <>
+            {overdue.length > 0 && (
+              <div className="stat-card" style={{ marginBottom: '1rem' }}>
+                <h3 className="chatbot-section-title" style={{ color: '#ef4444' }}>
+                  <i className="fas fa-exclamation-triangle"></i> Overdue
+                  <span className="chatbot-count" style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444' }}>{overdue.length}</span>
+                </h3>
+                <div className="em-deadline-list">
+                  {overdue.map(e => <DeadlineItem key={e._id} email={e} />)}
+                </div>
               </div>
-            </div>
-          )}
-        </>
+            )}
+            {upcoming.length > 0 && (
+              <div className="stat-card">
+                <h3 className="chatbot-section-title">
+                  <i className="fas fa-calendar-alt"></i> Upcoming
+                  <span className="chatbot-count">{upcoming.length}</span>
+                </h3>
+                <div className="em-deadline-list">
+                  {upcoming.map(e => <DeadlineItem key={e._id} email={e} />)}
+                </div>
+              </div>
+            )}
+          </>
+        )
+      )}
+
+      {tab === 'followups' && (
+        followUps.length === 0 ? (
+          <div className="chatbot-empty">
+            <i className="fas fa-bell"></i>
+            <p>No follow-ups set. Open an email in your inbox and set a follow-up date using the tracker at the bottom of the email.</p>
+          </div>
+        ) : (
+          <>
+            {fuOverdue.length > 0 && (
+              <div className="stat-card" style={{ marginBottom: '1rem' }}>
+                <h3 className="chatbot-section-title" style={{ color: '#f59e0b' }}>
+                  <i className="fas fa-bell"></i> Overdue Follow-ups
+                  <span className="chatbot-count" style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>{fuOverdue.length}</span>
+                </h3>
+                <div className="em-deadline-list">
+                  {fuOverdue.map(e => <DeadlineItem key={e._id} email={e} dateField="followUpDate" textField="followUpNote" />)}
+                </div>
+              </div>
+            )}
+            {fuUpcoming.length > 0 && (
+              <div className="stat-card">
+                <h3 className="chatbot-section-title" style={{ color: '#a78bfa' }}>
+                  <i className="fas fa-bell"></i> Upcoming Follow-ups
+                  <span className="chatbot-count" style={{ background: 'rgba(167,139,250,0.15)', color: '#a78bfa' }}>{fuUpcoming.length}</span>
+                </h3>
+                <div className="em-deadline-list">
+                  {fuUpcoming.map(e => <DeadlineItem key={e._id} email={e} dateField="followUpDate" textField="followUpNote" />)}
+                </div>
+              </div>
+            )}
+          </>
+        )
       )}
     </div>
   );
@@ -805,7 +1224,7 @@ function DeadlinesTab({ flash }) {
 // ── COMPOSE TAB ──────────────────────────────────────────
 
 function ComposeTab({ flash }) {
-  const [form, setForm]     = useState({ to: '', subject: '', body: '' });
+  const [form, setForm]       = useState({ to: '', subject: '', body: '' });
   const [sending, setSending] = useState(false);
   const [sent, setSent]       = useState(false);
 
@@ -848,46 +1267,29 @@ function ComposeTab({ flash }) {
           <div className="form-group">
             <label>To <span style={{ color: '#ef4444' }}>*</span></label>
             <input
-              type="email"
-              className="form-input"
-              placeholder="recipient@example.com"
-              value={form.to}
-              onChange={e => set('to', e.target.value)}
-              required
+              type="email" className="form-input" placeholder="recipient@example.com"
+              value={form.to} onChange={e => set('to', e.target.value)} required
             />
           </div>
           <div className="form-group">
             <label>Subject <span style={{ color: '#ef4444' }}>*</span></label>
             <input
-              type="text"
-              className="form-input"
-              placeholder="Email subject..."
-              value={form.subject}
-              onChange={e => set('subject', e.target.value)}
-              required
+              type="text" className="form-input" placeholder="Email subject..."
+              value={form.subject} onChange={e => set('subject', e.target.value)} required
             />
           </div>
           <div className="form-group">
             <label>Message <span style={{ color: '#ef4444' }}>*</span></label>
             <textarea
-              className="form-input chatbot-textarea"
-              rows={10}
+              className="form-input chatbot-textarea" rows={10}
               placeholder="Write your email here..."
-              value={form.body}
-              onChange={e => set('body', e.target.value)}
-              required
+              value={form.body} onChange={e => set('body', e.target.value)} required
             />
           </div>
-          <button
-            type="submit"
-            className="btn-primary"
-            style={{ width: '100%' }}
-            disabled={sending}
-          >
+          <button type="submit" className="btn-primary" style={{ width: '100%' }} disabled={sending}>
             {sending
               ? <><i className="fas fa-spinner fa-spin"></i> Sending…</>
-              : <><i className="fas fa-paper-plane"></i> Send Email</>
-            }
+              : <><i className="fas fa-paper-plane"></i> Send Email</>}
           </button>
         </form>
       </div>
@@ -909,6 +1311,7 @@ export default function EmailAnalyser() {
   const TABS = [
     { id: 'analyze',   label: 'Analyse',   icon: 'fas fa-search' },
     { id: 'inbox',     label: 'Inbox',     icon: 'fas fa-inbox' },
+    { id: 'digest',    label: 'Digest',    icon: 'fas fa-newspaper' },
     { id: 'deadlines', label: 'Deadlines', icon: 'fas fa-clock' },
     { id: 'compose',   label: 'Compose',   icon: 'fas fa-paper-plane' }
   ];
@@ -936,6 +1339,7 @@ export default function EmailAnalyser() {
 
       {tab === 'analyze'   && <AnalyzeTab flash={flash} />}
       {tab === 'inbox'     && <InboxTab flash={flash} />}
+      {tab === 'digest'    && <DigestTab flash={flash} />}
       {tab === 'deadlines' && <DeadlinesTab flash={flash} />}
       {tab === 'compose'   && <ComposeTab flash={flash} />}
     </div>

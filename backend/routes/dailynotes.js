@@ -4,13 +4,6 @@ const auth     = require('../middleware/auth');
 const DailyNote = require('../models/DailyNote');
 const Settings  = require('../models/Settings');
 
-// Seed default daily notes password if not set
-Settings.findOne({ key: 'dailyNotesPassword' }).then(s => {
-  if (!s) Settings.create({ key: 'dailyNotesPassword', value: '2410' })
-    .then(() => console.log('Daily notes password initialised: 2410'))
-    .catch(err => console.error('Settings seed error:', err.message));
-});
-
 // POST /api/dailynotes/verify — public, checks pin against DB
 router.post('/verify', async (req, res) => {
   try {

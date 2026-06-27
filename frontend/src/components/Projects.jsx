@@ -1,17 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '../api/axios.js';
 
-const FILTERS = [
-  { value: 'all',          label: 'All' },
-  { value: 'ml',           label: 'Machine Learning' },
-  { value: 'web',          label: 'Web Development' },
-  { value: 'agentic',      label: 'Agentic AI' },
-  { value: 'genai',        label: 'Generative AI' },
-  { value: 'deeplearning', label: 'Deep Learning' },
-  { value: 'arvr',         label: 'AR / VR' },
-  { value: 'nlp',          label: 'NLP' },
-  { value: 'n8n',          label: 'n8n' },
-];
+const PAGE_SIZE = 9;
 
 const CAT_CONFIG = {
   ml:           { label: 'ML',             color: '#4d8ee8', icon: 'fas fa-brain' },
@@ -33,6 +23,7 @@ const onSpotlight = (e) => {
 export default function Projects() {
   const [projects, setProjects] = useState([]);
   const [filter, setFilter] = useState('all');
+  const [shown, setShown] = useState(PAGE_SIZE);
   const [loading, setLoading] = useState(true);
   const [modalProject, setModalProject] = useState(null);
   const gridRef = useRef(null);
@@ -44,7 +35,26 @@ export default function Projects() {
       .finally(() => setLoading(false));
   }, []);
 
-  const visible = filter === 'all' ? projects : projects.filter(p => p.category === filter);
+  // Build filter buttons dynamically from categories in the data
+  const usedCategories = [...new Set(projects.map(p => p.category))];
+  const filters = [
+    { value: 'all', label: 'All' },
+    ...usedCategories
+      .filter(c => CAT_CONFIG[c])
+      .map(c => ({ value: c, label: CAT_CONFIG[c].label })),
+    ...usedCategories
+      .filter(c => !CAT_CONFIG[c])
+      .map(c => ({ value: c, label: c })),
+  ];
+
+  const filtered = filter === 'all' ? projects : projects.filter(p => p.category === filter);
+  const visible = filtered.slice(0, shown);
+  const hasMore = shown < filtered.length;
+
+  const changeFilter = (val) => {
+    setFilter(val);
+    setShown(PAGE_SIZE);
+  };
 
   // Close modal on Escape key
   useEffect(() => {
@@ -70,12 +80,13 @@ export default function Projects() {
       });
     }, { threshold: 0.08 });
     cards.forEach((card, i) => {
-      card.classList.remove('visible');
-      card.style.transitionDelay = `${i * 70}ms`;
-      obs.observe(card);
+      if (!card.classList.contains('visible')) {
+        card.style.transitionDelay = `${i * 60}ms`;
+        obs.observe(card);
+      }
     });
     return () => obs.disconnect();
-  }, [loading, filter, projects]);
+  }, [loading, filter, shown, projects]);
 
   if (loading) return (
     <section className="section-page">
@@ -95,19 +106,32 @@ export default function Projects() {
       </div>
 
       <div className="filter-buttons">
-        {FILTERS.map(f => (
+        {filters.map(f => (
           <button
             key={f.value}
             className={`filter-btn${filter === f.value ? ' active' : ''}`}
-            onClick={() => setFilter(f.value)}
+            onClick={() => changeFilter(f.value)}
           >
             {f.label}
+            {f.value !== 'all' && (
+              <span style={{
+                marginLeft: '0.35rem',
+                fontSize: '0.72rem',
+                opacity: 0.6,
+              }}>
+                ({projects.filter(p => p.category === f.value).length})
+              </span>
+            )}
           </button>
         ))}
       </div>
 
+      <p style={{ textAlign: 'center', fontSize: '0.82rem', color: 'rgba(240,244,248,0.4)', marginBottom: '1.5rem' }}>
+        Showing {visible.length} of {filtered.length} project{filtered.length !== 1 ? 's' : ''}
+      </p>
+
       <div className="projects-grid" ref={gridRef}>
-        {visible.map(p => {
+        {visible.map((p, idx) => {
           const cat = CAT_CONFIG[p.category] || { label: p.category, color: '#4d8ee8', icon: 'fas fa-code' };
           return (
             <div
@@ -167,6 +191,19 @@ export default function Projects() {
           );
         })}
       </div>
+
+      {hasMore && (
+        <div style={{ textAlign: 'center', marginTop: '2.5rem' }}>
+          <button
+            className="filter-btn"
+            onClick={() => setShown(s => s + PAGE_SIZE)}
+            style={{ padding: '0.7rem 2.2rem', fontSize: '0.92rem' }}
+          >
+            <i className="fas fa-chevron-down" style={{ marginRight: '0.4rem' }}></i>
+            Load More ({filtered.length - shown} remaining)
+          </button>
+        </div>
+      )}
 
       {/* Project Detail Modal */}
       {modalProject && (

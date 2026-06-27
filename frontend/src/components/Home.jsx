@@ -74,6 +74,7 @@ export default function Home({ addToast }) {
   const [profile, setProfile] = useState(null);
   const [skills, setSkills] = useState([]);
   const [achievements, setAchievements] = useState([]);
+  const [projectCount, setProjectCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const tiltRef = useRef(null);
   const skillsRef = useRef(null);
@@ -84,11 +85,13 @@ export default function Home({ addToast }) {
     Promise.all([
       api.get('/profile'),
       api.get('/skills'),
-      api.get('/achievements')
-    ]).then(([p, s, a]) => {
+      api.get('/achievements'),
+      api.get('/projects')
+    ]).then(([p, s, a, proj]) => {
       setProfile(p.data);
       setSkills(s.data);
       setAchievements(a.data);
+      setProjectCount(Array.isArray(proj.data) ? proj.data.length : 0);
     }).catch(console.error)
       .finally(() => setLoading(false));
   }, []);
@@ -146,11 +149,11 @@ export default function Home({ addToast }) {
           <p className="tagline">{profile?.tagline}</p>
 
           <div className="counters-row">
-            <Counter target={20} label="Projects" />
+            <Counter target={projectCount} label="Projects" />
             <div className="counter-divider" />
-            <Counter target={5} label="Achievements" />
+            <Counter target={skills.length} label="Skills" />
             <div className="counter-divider" />
-            <Counter target={2} label="Papers" />
+            <Counter target={achievements.length} label="Achievements" />
           </div>
 
           <div className="social-links">

@@ -3,7 +3,7 @@ const router  = express.Router();
 const nodemailer = require('nodemailer');
 const auth    = require('../middleware/auth');
 const Email   = require('../models/Email');
-const { analyzeEmail, generateReply } = require('../utils/emailAnalyzer');
+const { analyzeEmail, generateReply, generateDigest } = require('../utils/emailAnalyzer');
 const { fetchGmailEmails } = require('../utils/gmailFetcher');
 
 // ── NODEMAILER TRANSPORTER ───────────────────────────────
@@ -19,7 +19,6 @@ function getTransporter() {
 
 // ── ANALYZE EMAIL ────────────────────────────────────────
 // POST /api/emails/analyze
-// Runs AI analysis; does NOT save to DB (caller decides)
 router.post('/analyze', auth, async (req, res) => {
   try {
     const { subject, body } = req.body;
@@ -48,6 +47,72 @@ router.post('/generate-reply', auth, async (req, res) => {
   }
 });
 
+// ── DAILY DIGEST ─────────────────────────────────────────
+// GET /api/emails/digest
+router.get('/digest', auth, async (req, res) => {
+  try {
+    const emails = await Email.find({ status: { $in: ['unread', 'read'] }, direction: 'incoming' })
+      .sort({ priority: 1, createdAt: -1 })
+      .limit(30)
+      .select('subject from priority category summary body deadline deadlineText requiresReply replyUrgency actionItems tags');
+
+    if (emails.length === 0) {
+      return res.json({
+        digest: 'Your inbox is empty. No unread emails — you\'re all caught up!',
+        stats: { total: 0, high: 0, needsReply: 0, withDeadline: 0, actionCount: 0 }
+      });
+    }
+
+    const digest = await generateDigest(emails);
+
+    const stats = {
+      total:        emails.length,
+      high:         emails.filter(e => e.priority === 'high').length,
+      needsReply:   emails.filter(e => e.requiresReply).length,
+      withDeadline: emails.filter(e => e.deadline).length,
+      actionCount:  emails.reduce((sum, e) => sum + (e.actionItems?.length || 0), 0)
+    };
+
+    res.json({ digest, stats });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── BULK RE-ANALYZE ──────────────────────────────────────
+// POST /api/emails/bulk-reanalyze
+// Re-runs AI on emails that have no summary (analysis failed during sync)
+router.post('/bulk-reanalyze', auth, async (req, res) => {
+  try {
+    const emails = await Email.find({ summary: '', direction: 'incoming' }).limit(20);
+    if (emails.length === 0) return res.json({ reanalyzed: 0 });
+
+    let reanalyzed = 0;
+    for (const email of emails) {
+      try {
+        const analysis = await analyzeEmail(email.subject, email.body);
+        await Email.findByIdAndUpdate(email._id, {
+          summary:      analysis.summary,
+          priority:     analysis.priority,
+          category:     analysis.category,
+          deadline:     analysis.deadline,
+          deadlineText: analysis.deadlineText,
+          tags:         analysis.tags,
+          actionItems:  analysis.actionItems,
+          requiresReply: analysis.requiresReply,
+          replyUrgency:  analysis.replyUrgency
+        });
+        reanalyzed++;
+        await new Promise(r => setTimeout(r, 350));
+      } catch { /* skip individual failures */ }
+    }
+
+    res.json({ reanalyzed });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── SEND EMAIL ───────────────────────────────────────────
 // POST /api/emails/send
 router.post('/send', auth, async (req, res) => {
@@ -68,7 +133,6 @@ router.post('/send', auth, async (req, res) => {
       text:    body.trim()
     });
 
-    // Save as outgoing email
     const saved = await Email.create({
       from:      process.env.EMAIL_USER,
       to:        to.trim(),
@@ -89,24 +153,31 @@ router.post('/send', auth, async (req, res) => {
 // POST /api/emails
 router.post('/', auth, async (req, res) => {
   try {
-    const { from, to, subject, body, summary, priority, category, replyDraft, deadline, deadlineText, tags, status, direction } = req.body;
+    const {
+      from, to, subject, body, summary, priority, category,
+      replyDraft, deadline, deadlineText, tags, status, direction,
+      actionItems, requiresReply, replyUrgency
+    } = req.body;
     if (!subject?.trim() || !body?.trim())
       return res.status(400).json({ error: 'Subject and body are required' });
 
     const email = await Email.create({
-      from:        from || '',
-      to:          to || '',
-      subject:     subject.trim(),
-      body:        body.trim(),
-      summary:     summary || '',
-      priority:    priority || 'medium',
-      category:    category || 'general',
-      replyDraft:  replyDraft || '',
-      deadline:    deadline ? new Date(deadline) : null,
+      from:         from || '',
+      to:           to || '',
+      subject:      subject.trim(),
+      body:         body.trim(),
+      summary:      summary || '',
+      priority:     priority || 'medium',
+      category:     category || 'general',
+      replyDraft:   replyDraft || '',
+      deadline:     deadline ? new Date(deadline) : null,
       deadlineText: deadlineText || '',
-      tags:        tags || [],
-      status:      status || 'unread',
-      direction:   direction || 'incoming'
+      tags:         tags || [],
+      status:       status || 'unread',
+      direction:    direction || 'incoming',
+      actionItems:  actionItems || [],
+      requiresReply: Boolean(requiresReply),
+      replyUrgency:  replyUrgency || 'none'
     });
 
     res.status(201).json(email);
@@ -117,19 +188,16 @@ router.post('/', auth, async (req, res) => {
 
 // ── SYNC GMAIL ───────────────────────────────────────────
 // POST /api/emails/sync-gmail  { days: 7 }
-// Fetches last N days from Gmail IMAP, runs AI analysis on each new email, saves to DB.
 router.post('/sync-gmail', auth, async (req, res) => {
   try {
     const days = Math.min(Math.max(Number(req.body.days) || 7, 1), 30);
 
-    // 1. Fetch raw emails from Gmail
     const raw = await fetchGmailEmails(days);
 
     if (raw.length === 0) {
       return res.json({ fetched: 0, saved: 0, skipped: 0, emails: [] });
     }
 
-    // 2. Find which gmailMessageIds already exist in DB (deduplication)
     const existingIds = new Set(
       (await Email.find({ gmailMessageId: { $in: raw.map(e => e.gmailMessageId) } })
         .select('gmailMessageId').lean())
@@ -143,7 +211,6 @@ router.post('/sync-gmail', auth, async (req, res) => {
       return res.json({ fetched: raw.length, saved: 0, skipped, emails: [] });
     }
 
-    // 3. Batch-analyze with concurrency limit of 4
     const CONCURRENCY = 4;
     const saved = [];
 
@@ -165,12 +232,14 @@ router.post('/sync-gmail', auth, async (req, res) => {
             deadline:       analysis.deadline || null,
             deadlineText:   analysis.deadlineText,
             tags:           analysis.tags,
+            actionItems:    analysis.actionItems,
+            requiresReply:  analysis.requiresReply,
+            replyUrgency:   analysis.replyUrgency,
             status:         'unread',
             direction:      'incoming',
             createdAt:      email.receivedAt
           });
         } catch {
-          // If analysis fails, save without AI data
           try {
             return await Email.create({
               gmailMessageId: email.gmailMessageId,
@@ -187,18 +256,12 @@ router.post('/sync-gmail', auth, async (req, res) => {
 
       saved.push(...results.filter(Boolean));
 
-      // Small pause between batches to respect Gemini rate limits
       if (i + CONCURRENCY < newEmails.length) {
         await new Promise(r => setTimeout(r, 400));
       }
     }
 
-    res.json({
-      fetched: raw.length,
-      saved:   saved.length,
-      skipped,
-      emails:  saved
-    });
+    res.json({ fetched: raw.length, saved: saved.length, skipped, emails: saved });
 
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -206,16 +269,23 @@ router.post('/sync-gmail', auth, async (req, res) => {
 });
 
 // ── GET ALL EMAILS ───────────────────────────────────────
-// GET /api/emails?priority=high&category=tnp&status=unread&hasDeadline=true&page=1
+// GET /api/emails?priority=high&category=tnp&status=unread&hasDeadline=true&requiresReply=true&q=search&page=1
 router.get('/', auth, async (req, res) => {
   try {
-    const { priority, category, status, hasDeadline, direction, page = 1 } = req.query;
+    const { priority, category, status, hasDeadline, direction, requiresReply, q, page = 1 } = req.query;
     const filter = {};
-    if (priority)    filter.priority = priority;
-    if (category)    filter.category = category;
-    if (status)      filter.status   = status;
+
+    if (priority)    filter.priority  = priority;
+    if (category)    filter.category  = category;
+    if (status)      filter.status    = status;
     if (direction)   filter.direction = direction;
-    if (hasDeadline === 'true') filter.deadline = { $ne: null };
+    if (hasDeadline === 'true')    filter.deadline     = { $ne: null };
+    if (requiresReply === 'true')  filter.requiresReply = true;
+
+    if (q?.trim()) {
+      const regex = new RegExp(q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      filter.$or = [{ subject: regex }, { from: regex }, { tags: regex }];
+    }
 
     const limit = 20;
     const total = await Email.countDocuments(filter);
@@ -243,12 +313,29 @@ router.get('/deadlines', auth, async (req, res) => {
   }
 });
 
+// ── GET FOLLOW-UPS ───────────────────────────────────────
+// GET /api/emails/followups
+router.get('/followups', auth, async (req, res) => {
+  try {
+    const emails = await Email.find({ followUpDate: { $ne: null } })
+      .sort({ followUpDate: 1 })
+      .select('subject from priority category followUpDate followUpNote status tags createdAt');
+    res.json(emails);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── UPDATE EMAIL ─────────────────────────────────────────
 // PATCH /api/emails/:id
 router.patch('/:id', auth, async (req, res) => {
   try {
-    const allowed = ['status', 'replyDraft', 'deadline', 'deadlineText', 'priority', 'category', 'tags', 'summary'];
-    const update  = {};
+    const allowed = [
+      'status', 'replyDraft', 'deadline', 'deadlineText',
+      'priority', 'category', 'tags', 'summary',
+      'followUpDate', 'followUpNote', 'requiresReply', 'replyUrgency', 'actionItems'
+    ];
+    const update = {};
     allowed.forEach(k => { if (req.body[k] !== undefined) update[k] = req.body[k]; });
 
     const email = await Email.findByIdAndUpdate(req.params.id, update, { new: true });

@@ -144,6 +144,19 @@ export default function ManageCertificates() {
                   <button className="btn-toggle" onClick={() => toggleVisibility(cert)}>
                     {cert.isVisible ? 'Hide' : 'Show'}
                   </button>
+                  <button
+                    className="btn-toggle"
+                    title="Download"
+                    onClick={() => {
+                      const a = document.createElement('a');
+                      a.href = cert.imageUrl;
+                      a.download = cert.title || 'image';
+                      a.target = '_blank';
+                      a.click();
+                    }}
+                  >
+                    <i className="fas fa-download"></i>
+                  </button>
                   <button className="btn-delete" onClick={() => setDeleteTarget(cert._id)}>
                     <i className="fas fa-trash"></i>
                   </button>

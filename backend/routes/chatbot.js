@@ -5,6 +5,8 @@ const pdfParse = require('pdf-parse');
 const auth = require('../middleware/auth');
 const ChatbotChunk = require('../models/ChatbotChunk');
 const ChatbotConfig = require('../models/ChatbotConfig');
+const { DEFAULT_SYSTEM_PROMPT } = require('../models/ChatbotConfig');
+const Project = require('../models/Project');
 const { chunkText } = require('../utils/chunker');
 const { embed, embedBatch } = require('../utils/embedder');
 const { retrieve } = require('../utils/retriever');
@@ -21,7 +23,14 @@ const upload = multer({
 
 async function getConfig() {
   let config = await ChatbotConfig.findOne();
-  if (!config) config = await ChatbotConfig.create({});
+  if (!config) {
+    config = await ChatbotConfig.create({});
+  } else if (!config.systemPrompt.includes('CONVERSATION HISTORY')) {
+    // Auto-migrate: prompt missing latest template fields — replace with current default
+    config.systemPrompt = DEFAULT_SYSTEM_PROMPT;
+    config.topK = Math.max(config.topK || 5, 8);
+    await config.save();
+  }
   return config;
 }
 
@@ -37,16 +46,33 @@ router.get('/config', async (req, res) => {
   }
 });
 
+// Find projects whose title/description matches the query
+async function findRelatedProjects(message) {
+  const words = message.toLowerCase().match(/\b\w{4,}\b/g) || [];
+  if (words.length === 0) return [];
+  const pattern = words.join('|');
+  return Project.find({
+    $or: [
+      { title: { $regex: pattern, $options: 'i' } },
+      { description: { $regex: pattern, $options: 'i' } },
+      { category: { $regex: pattern, $options: 'i' } }
+    ]
+  }).limit(4).lean();
+}
+
 // POST /api/chatbot/chat
 router.post('/chat', async (req, res) => {
   try {
-    const { message } = req.body;
+    const { message, history = [] } = req.body;
     if (!message?.trim()) return res.status(400).json({ error: 'Message is required' });
 
     const config = await getConfig();
     const queryVector = await embed(message.trim());
-    const chunks = await retrieve(queryVector, config.topK);
-    const result = await generateResponse(message.trim(), chunks, config);
+    const [chunks, projects] = await Promise.all([
+      retrieve(queryVector, config.topK),
+      findRelatedProjects(message.trim())
+    ]);
+    const result = await generateResponse(message.trim(), chunks, projects, config, history);
 
     res.json(result);
   } catch (err) {
