@@ -26,17 +26,20 @@ app.use('/api/contact', require('./routes/contact'));
 app.use('/api/certificates', require('./routes/certificates'));
 app.use('/api/dailynotes',  require('./routes/dailynotes'));
 app.use('/api/emails',     require('./routes/emails'));
+app.use('/api/todos',      require('./routes/todos'));
 
 // Serve static files (profile image)
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Connect to MongoDB and start server
 const PORT = process.env.PORT || 7000;
+const emailScheduler = require('./utils/emailScheduler');
 
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => {
     console.log('Connected to MongoDB');
     app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+    emailScheduler.start();
   })
   .catch(err => {
     console.error('MongoDB connection error:', err.message);

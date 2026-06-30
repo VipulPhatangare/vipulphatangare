@@ -29,6 +29,21 @@ function deadlineDays(date) {
   return Math.ceil((new Date(date) - new Date()) / 86400000);
 }
 
+function timeAgo(iso) {
+  const secs = Math.floor((Date.now() - new Date(iso)) / 1000);
+  if (secs < 60)  return 'just now';
+  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
+  if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
+  return `${Math.floor(secs / 86400)}d ago`;
+}
+
+function timeUntil(iso) {
+  const secs = Math.floor((new Date(iso) - Date.now()) / 1000);
+  if (secs <= 0) return 'soon';
+  if (secs < 3600) return `${Math.floor(secs / 60)}m`;
+  return `${Math.floor(secs / 3600)}h ${Math.floor((secs % 3600) / 60)}m`;
+}
+
 function DeadlineBadge({ deadline, deadlineText }) {
   if (!deadline) return null;
   const days = deadlineDays(deadline);
@@ -40,8 +55,10 @@ function DeadlineBadge({ deadline, deadlineText }) {
   return (
     <span className="em-badge" style={{ color, background: bg, border: `1px solid ${color}33` }}>
       <i className={icon}></i>
-      {days < 0 ? 'Overdue' : days === 0 ? 'Due Today!' : `${days}d left`}
-      {deadlineText && <span style={{ opacity: 0.7, marginLeft: 4, fontWeight: 400 }}>· {deadlineText}</span>}
+      <span>
+        {days < 0 ? 'Overdue' : days === 0 ? 'Due Today!' : `${days}d left`}
+        {deadlineText && <span style={{ opacity: 0.7, fontWeight: 400 }}> · {deadlineText}</span>}
+      </span>
     </span>
   );
 }
@@ -50,7 +67,7 @@ function PriorityBadge({ priority }) {
   const m = PRIORITY_META[priority] || PRIORITY_META.medium;
   return (
     <span className="em-badge" style={{ color: m.color, background: m.bg, border: `1px solid ${m.color}33` }}>
-      <i className={m.icon}></i> {m.label}
+      <i className={m.icon}></i><span>{m.label}</span>
     </span>
   );
 }
@@ -59,7 +76,7 @@ function CategoryBadge({ category }) {
   const m = CATEGORY_META[category] || CATEGORY_META.general;
   return (
     <span className="em-badge" style={{ color: m.color, background: `${m.color}18`, border: `1px solid ${m.color}33` }}>
-      <i className={m.icon}></i> {m.label}
+      <i className={m.icon}></i><span>{m.label}</span>
     </span>
   );
 }
@@ -69,7 +86,7 @@ function ReplyUrgencyBadge({ urgency }) {
   if (!m) return null;
   return (
     <span className="em-badge" style={{ color: m.color, background: `${m.color}15`, border: `1px solid ${m.color}33` }}>
-      <i className={m.icon}></i> {m.label}
+      <i className={m.icon}></i><span>{m.label}</span>
     </span>
   );
 }
@@ -81,7 +98,7 @@ function FollowUpBadge({ followUpDate }) {
   return (
     <span className="em-badge" style={{ color, background: `${color}15`, border: `1px solid ${color}33` }}>
       <i className="fas fa-bell"></i>
-      {days < 0 ? 'Follow-up overdue' : days === 0 ? 'Follow up today' : `Follow up in ${days}d`}
+      <span>{days < 0 ? 'Follow-up overdue' : days === 0 ? 'Follow up today' : `Follow up in ${days}d`}</span>
     </span>
   );
 }
@@ -168,7 +185,7 @@ function EmailCard({ email, onStatusChange, onDelete, onUpdate }) {
           </span>
           {email.direction === 'outgoing' && (
             <span className="em-direction-badge">
-              <i className="fas fa-paper-plane"></i> Sent
+              <i className="fas fa-paper-plane"></i><span>Sent</span>
             </span>
           )}
         </div>
@@ -182,7 +199,7 @@ function EmailCard({ email, onStatusChange, onDelete, onUpdate }) {
           {email.followUpDate && <FollowUpBadge followUpDate={email.followUpDate} />}
           {email.actionItems?.length > 0 && (
             <span className="em-badge" style={{ color: '#34d399', background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.25)' }}>
-              <i className="fas fa-tasks"></i> {email.actionItems.length} action{email.actionItems.length > 1 ? 's' : ''}
+              <i className="fas fa-tasks"></i><span>{email.actionItems.length} action{email.actionItems.length > 1 ? 's' : ''}</span>
             </span>
           )}
         </div>
@@ -602,7 +619,21 @@ function InboxTab({ flash }) {
   const [syncing, setSyncing]       = useState(false);
   const [syncResult, setSyncResult] = useState(null);
   const [reanalyzing, setReanalyzing] = useState(false);
+  const [autoStatus, setAutoStatus] = useState(null);
   const searchTimer = useRef(null);
+
+  const loadAutoStatus = async () => {
+    try {
+      const { data } = await api.get('/emails/sync-status');
+      setAutoStatus(data);
+    } catch { /* silent */ }
+  };
+
+  useEffect(() => {
+    loadAutoStatus();
+    const t = setInterval(loadAutoStatus, 60000); // refresh every 60s
+    return () => clearInterval(t);
+  }, []);
 
   const load = async (p = 1, f = filters) => {
     setLoading(true);
@@ -724,6 +755,38 @@ function InboxTab({ flash }) {
 
       {/* ── GMAIL SYNC PANEL ── */}
       <div className="stat-card em-sync-card">
+
+        {/* Auto-sync status bar */}
+        {autoStatus?.enabled && (
+          <div className="em-autosync-bar">
+            <span className="em-autosync-indicator">
+              <span className={`em-autosync-dot${autoStatus.running ? ' em-autosync-dot-pulse' : ''}`}></span>
+              {autoStatus.running ? 'Auto-syncing now…' : 'Auto-sync ON'}
+            </span>
+            <span className="em-autosync-meta">
+              {autoStatus.lastRunAt && (
+                <span>
+                  <i className="fas fa-history"></i>
+                  Last: {timeAgo(autoStatus.lastRunAt)}
+                  {autoStatus.lastResult && ` · ${autoStatus.lastResult.saved} new`}
+                </span>
+              )}
+              {autoStatus.nextRunAt && !autoStatus.running && (
+                <span>
+                  <i className="fas fa-forward"></i>
+                  Next: {timeUntil(autoStatus.nextRunAt)}
+                </span>
+              )}
+              <span><i className="fas fa-clock"></i> every 4h</span>
+            </span>
+            {autoStatus.lastError && (
+              <span className="em-autosync-error">
+                <i className="fas fa-exclamation-triangle"></i> {autoStatus.lastError}
+              </span>
+            )}
+          </div>
+        )}
+
         <div className="em-sync-header">
           <div className="em-sync-title">
             <i className="fab fa-google" style={{ color: '#ea4335' }}></i>

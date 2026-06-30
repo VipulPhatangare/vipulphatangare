@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import api from '../api/axios.js';
 import ConfirmModal from './ConfirmModal.jsx';
 
 const STORAGE_KEY = 'admin_documents';
@@ -15,7 +16,59 @@ function saveDocs(docs) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(docs));
 }
 
+function PasswordGate({ onUnlock }) {
+  const [input,    setInput]    = useState('');
+  const [error,    setError]    = useState('');
+  const [checking, setChecking] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!input.trim()) return;
+    setChecking(true);
+    setError('');
+    try {
+      await api.post('/dailynotes/verify', { password: input });
+      onUnlock();
+    } catch {
+      setError('Wrong password. Try again.');
+      setInput('');
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+      <div className="dn-lock-box" style={{ background: 'var(--card-bg)', border: '1px solid var(--gray)', borderRadius: 12, padding: '2.5rem 2rem', minWidth: 320, textAlign: 'center' }}>
+        <div className="dn-lock-icon" style={{ fontSize: '2.5rem', color: 'var(--primary)', marginBottom: '1rem' }}>
+          <i className="fas fa-lock"></i>
+        </div>
+        <h2 style={{ marginBottom: '0.4rem' }}>Documents</h2>
+        <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>Enter the password to access this section.</p>
+        <form onSubmit={handleSubmit}>
+          <input
+            type="password"
+            className="dn-lock-input"
+            placeholder="Enter password"
+            value={input}
+            onChange={e => { setInput(e.target.value); setError(''); }}
+            autoFocus
+            style={{ width: '100%', marginBottom: '0.75rem' }}
+          />
+          {error && <p style={{ color: 'var(--danger)', fontSize: '0.85rem', marginBottom: '0.75rem' }}>{error}</p>}
+          <button type="submit" className="btn-primary" style={{ width: '100%' }} disabled={checking}>
+            {checking
+              ? <><i className="fas fa-spinner fa-spin"></i> Checking…</>
+              : <><i className="fas fa-unlock-alt"></i> Unlock</>}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function ManageDocuments() {
+  const [unlocked, setUnlocked] = useState(false);
   const [docs, setDocs] = useState([]);
   const [modal, setModal] = useState(false);
   const [title, setTitle] = useState('');
@@ -25,7 +78,7 @@ export default function ManageDocuments() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const fileRef = useRef(null);
 
-  useEffect(() => { setDocs(loadDocs()); }, []);
+  useEffect(() => { if (unlocked) setDocs(loadDocs()); }, [unlocked]);
 
   const openAdd = () => {
     setTitle('');
@@ -104,6 +157,8 @@ export default function ManageDocuments() {
     if (mimeType.includes('text')) return 'fas fa-file-alt';
     return 'fas fa-file';
   };
+
+  if (!unlocked) return <PasswordGate onUnlock={() => setUnlocked(true)} />;
 
   return (
     <div>

@@ -5,6 +5,7 @@ const auth    = require('../middleware/auth');
 const Email   = require('../models/Email');
 const { analyzeEmail, generateReply, generateDigest } = require('../utils/emailAnalyzer');
 const { fetchGmailEmails } = require('../utils/gmailFetcher');
+const emailScheduler = require('../utils/emailScheduler');
 
 // ── NODEMAILER TRANSPORTER ───────────────────────────────
 function getTransporter() {
@@ -111,6 +112,21 @@ router.post('/bulk-reanalyze', auth, async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ── AUTO-SYNC STATUS ─────────────────────────────────────
+// GET /api/emails/sync-status
+router.get('/sync-status', auth, (req, res) => {
+  res.json(emailScheduler.getStatus());
+});
+
+// ── MANUAL TRIGGER ───────────────────────────────────────
+// POST /api/emails/trigger-sync
+router.post('/trigger-sync', auth, async (req, res) => {
+  const s = emailScheduler.getStatus();
+  if (s.running) return res.json({ message: 'Sync already in progress', status: s });
+  emailScheduler.triggerNow();          // fire-and-forget
+  res.json({ message: 'Auto-sync triggered', status: emailScheduler.getStatus() });
 });
 
 // ── SEND EMAIL ───────────────────────────────────────────
