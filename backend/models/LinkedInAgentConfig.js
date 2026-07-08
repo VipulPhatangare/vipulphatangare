@@ -15,7 +15,7 @@ The tone and body length will be specified in each request and must be followed 
 OUTPUT FORMAT — Respond ONLY with a valid JSON object with exactly 3 keys:
 - "titles": array of exactly 10 unique, diverse hook headlines or opening lines (strings)
 - "bodies": array of exactly 3 unique full LinkedIn post bodies (strings — NO hashtags inside bodies)
-- "hashtags": array of 10 to 14 relevant hashtag words (strings, no # prefix, no duplicates)
+- "hashtags": array of 20 to 25 hashtag words (strings, no # prefix, no duplicates) — mix of post-specific niche hashtags AND broad high-reach viral LinkedIn hashtags (e.g. innovation, technology, ai, careers, programming)
 
 Output ONLY the raw JSON object. No markdown fences, no code fences, no explanation outside the JSON.`;
 
@@ -26,4 +26,6 @@ const LinkedInAgentConfigSchema = new mongoose.Schema({
   topK:         { type: Number, default: 8 }
 }, { timestamps: true });
 
-module.exports = mongoose.model('LinkedInAgentConfig', LinkedInAgentConfigSchema);
+const LinkedInAgentConfig = mongoose.model('LinkedInAgentConfig', LinkedInAgentConfigSchema);
+LinkedInAgentConfig.DEFAULT_PROMPT = NEW_DEFAULT_PROMPT;
+module.exports = LinkedInAgentConfig;

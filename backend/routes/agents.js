@@ -8,11 +8,34 @@ const { fetchUrlMeta } = require('../utils/urlFetcher');
 const LinkedInPost = require('../models/LinkedInPost');
 const LinkedInAgentConfig = require('../models/LinkedInAgentConfig');
 
+const HASHTAG_SPEC = '- "hashtags": array of 20 to 25 hashtag words (strings, no # prefix, no duplicates) — mix of post-specific niche hashtags AND broad high-reach viral LinkedIn hashtags (e.g. innovation, technology, ai, careers, programming)';
+
+// Loads the saved config; migrates prompts cached in the DB before the current
+// output contract (v2 titles/bodies/hashtags object, 20–25 hashtag spec)
+async function getLinkedInConfig() {
+  let config = await LinkedInAgentConfig.findOne();
+  if (!config) return LinkedInAgentConfig.create({});
+
+  const hasV2Contract = config.systemPrompt.includes('"titles"') && config.systemPrompt.includes('"bodies"');
+  if (!hasV2Contract) {
+    console.log('[agents] LinkedIn config: stale v1 system prompt detected — resetting to factory default');
+    config.systemPrompt = LinkedInAgentConfig.DEFAULT_PROMPT;
+    await config.save();
+    return config;
+  }
+
+  const oldSpec = /-?\s*"hashtags":\s*array of (?!20 to 25)[^\n]*/;
+  if (oldSpec.test(config.systemPrompt)) {
+    config.systemPrompt = config.systemPrompt.replace(oldSpec, HASHTAG_SPEC);
+    await config.save();
+  }
+  return config;
+}
+
 // ── CONFIG ──────────────────────────────────────────────────────────────────
 router.get('/linkedin/config', auth, async (req, res) => {
   try {
-    let config = await LinkedInAgentConfig.findOne();
-    if (!config) config = await LinkedInAgentConfig.create({});
+    const config = await getLinkedInConfig();
     res.json(config);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -41,8 +64,7 @@ router.post('/linkedin/generate', auth, async (req, res) => {
     const { prompt, tone, length, projectUrl } = req.body;
     if (!prompt?.trim()) return res.status(400).json({ error: 'Prompt is required' });
 
-    let config = await LinkedInAgentConfig.findOne();
-    if (!config) config = await LinkedInAgentConfig.create({});
+    const config = await getLinkedInConfig();
 
     const queryVector = await embed(prompt);
     const chunks = await retrieve(queryVector, config.topK);
@@ -67,8 +89,7 @@ router.post('/linkedin/regenerate', auth, async (req, res) => {
     if (!prompt?.trim()) return res.status(400).json({ error: 'Prompt is required' });
     if (!section)        return res.status(400).json({ error: 'Section is required' });
 
-    let config = await LinkedInAgentConfig.findOne();
-    if (!config) config = await LinkedInAgentConfig.create({});
+    const config = await getLinkedInConfig();
 
     const queryVector = await embed(prompt);
     const chunks = await retrieve(queryVector, config.topK);

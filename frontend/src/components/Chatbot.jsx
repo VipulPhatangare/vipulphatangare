@@ -3,7 +3,26 @@ import api from '../api/axios.js';
 
 const HISTORY_KEY = 'vipul_chat_history';
 const TS_KEY = 'vipul_chat_ts';
+const SESSION_KEY = 'vipul_chat_session';
 const EXPIRY_MS = 24 * 60 * 60 * 1000;
+
+// Session id is tied to the same expiry window as the visible history —
+// a fresh conversation client-side means a fresh session server-side too.
+function getSessionId() {
+  const ts = localStorage.getItem(TS_KEY);
+  const expired = !ts || Date.now() - Number(ts) > EXPIRY_MS;
+  if (expired) {
+    const id = crypto.randomUUID();
+    localStorage.setItem(SESSION_KEY, id);
+    return id;
+  }
+  let id = localStorage.getItem(SESSION_KEY);
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem(SESSION_KEY, id);
+  }
+  return id;
+}
 
 const CAT_COLORS = {
   ml: '#4d8ee8', web: '#51cf66', agentic: '#be4bdb', genai: '#f59e0b',
@@ -395,6 +414,13 @@ export default function Chatbot() {
     if (open) setTimeout(() => inputRef.current?.focus(), 100);
   }, [open]);
 
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [input]);
+
   const startTyping = (msgId, fullText) => {
     if (typingTimerRef.current) clearInterval(typingTimerRef.current);
     let charCount = 0;
@@ -420,21 +446,12 @@ export default function Chatbot() {
 
     const userMsg = { id: Date.now(), role: 'user', text, displayedText: text, isTyping: false };
 
-    // Build last 8 turns (4 user + 4 bot) as history for the backend
-    const history = messages
-      .filter(m => !m.isTyping && !m.isError)
-      .slice(-8)
-      .map(m => ({
-        role: m.role === 'user' ? 'user' : 'model',
-        text: m.role === 'user' ? m.text : (m.text || '')
-      }));
-
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setLoading(true);
 
     try {
-      const { data } = await api.post('/chatbot/chat', { message: text, history });
+      const { data } = await api.post('/chatbot/chat', { message: text, sessionId: getSessionId() });
       const isTextTpl = data.template === 'text';
       const botId = Date.now() + 1;
 
@@ -480,6 +497,7 @@ export default function Chatbot() {
     setMessages([]);
     localStorage.removeItem(HISTORY_KEY);
     localStorage.removeItem(TS_KEY);
+    localStorage.removeItem(SESSION_KEY);
     setShowConfirm(false);
   };
 

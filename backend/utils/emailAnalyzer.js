@@ -63,7 +63,7 @@ Rules:
 
 async function analyzeEmail(subject, body) {
   const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
+    model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
     systemInstruction: ANALYZE_SYSTEM,
     generationConfig: { maxOutputTokens: 1024, temperature: 0.3 }
   });
@@ -97,7 +97,7 @@ async function analyzeEmail(subject, body) {
 
 async function generateReply(subject, body) {
   const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
+    model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
     systemInstruction: REPLY_SYSTEM,
     generationConfig: { maxOutputTokens: 512, temperature: 0.6 }
   });
@@ -109,7 +109,7 @@ async function generateReply(subject, body) {
 
 async function generateDigest(emails) {
   const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
+    model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
     systemInstruction: DIGEST_SYSTEM,
     generationConfig: { maxOutputTokens: 600, temperature: 0.4 }
   });

@@ -9,6 +9,11 @@ const profileSchema = new mongoose.Schema({
   linkedinUrl: { type: String, default: '' },
   instagramUrl: { type: String, default: '' },
   whatsappUrl: { type: String, default: '' },
+  leetcodeUrl: { type: String, default: '' },
+  portfolioUrl: { type: String, default: '' },
+  email: { type: String, default: '' },
+  phone: { type: String, default: '' },
+  location: { type: String, default: '' },
   footerText: { type: String, default: '© 2026 Vipul Phatangare. All rights reserved.' }
 }, { timestamps: true });
 

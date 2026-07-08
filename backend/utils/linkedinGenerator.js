@@ -1,5 +1,7 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
 const LENGTH_INSTRUCTIONS = {
   short:  '100–150 words',
   medium: '180–250 words',
@@ -40,17 +42,34 @@ function buildUrlContext(urlMeta) {
   return s + '\n';
 }
 
+// Shared Gemini JSON call with fence-stripping and one retry on parse failure
+async function callGeminiJSON(model, prompt, label) {
+  let lastErr;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const result = await model.generateContent(prompt);
+      let raw = result.response.text().trim();
+      if (label) console.log(`[linkedinGenerator] ${label} raw (first 300):`, raw.slice(0, 300));
+      raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+      return JSON.parse(raw);
+    } catch (err) {
+      lastErr = err;
+      console.warn(`[linkedinGenerator] Gemini call attempt ${attempt} failed:`, err.message);
+    }
+  }
+  throw new Error(`Gemini JSON call failed: ${lastErr.message}`);
+}
+
 async function generateComponents(userPrompt, chunks, config, tone = 'professional', length = 'medium', urlMeta = null) {
   const { systemPrompt, modelName, maxTokens } = config;
 
   console.log('\n========== LINKEDIN GENERATOR v2 ==========');
   console.log('Model:', modelName, '| Tone:', tone, '| Length:', length, '| Chunks:', chunks.length, '| URL:', urlMeta?.url || 'none');
 
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
   const model = genAI.getGenerativeModel({
     model: modelName,
     systemInstruction: systemPrompt,
-    generationConfig: { maxOutputTokens: maxTokens, temperature: 0.8 }
+    generationConfig: { maxOutputTokens: maxTokens, temperature: 0.8, responseMimeType: 'application/json' }
   });
 
   const contextPart = buildContext(chunks) + buildUrlContext(urlMeta);
@@ -63,17 +82,12 @@ Generate LinkedIn content components as a JSON object with EXACTLY this structur
 {
   "titles": [array of exactly 10 unique hook headlines / opening lines],
   "bodies": [array of exactly 3 unique full post bodies — NO hashtags inside bodies],
-  "hashtags": [array of 10 to 14 relevant hashtag words, no # prefix]
+  "hashtags": [array of 20 to 25 hashtag words, no # prefix — mix of post-specific niche hashtags AND broad high-reach viral LinkedIn hashtags (e.g. innovation, technology, ai, careers)]
 }
 
 Output ONLY the raw JSON object. No markdown fences, no explanation.`;
 
-  const result = await model.generateContent(prompt);
-  let raw = result.response.text().trim();
-  console.log('Raw (first 300):', raw.slice(0, 300));
-  raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
-
-  const parsed = JSON.parse(raw);
+  const parsed = await callGeminiJSON(model, prompt, 'generateComponents');
   const components = {
     titles:   (parsed.titles   || []).map(t => String(t).trim()).filter(Boolean).slice(0, 10),
     bodies:   (parsed.bodies   || []).map(b => String(b).trim()).filter(Boolean).slice(0, 3),
@@ -88,11 +102,10 @@ Output ONLY the raw JSON object. No markdown fences, no explanation.`;
 async function regenerateSection(userPrompt, chunks, config, tone, length, section, bodyIndex, projectUrl = '') {
   const { systemPrompt, modelName, maxTokens } = config;
 
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
   const model = genAI.getGenerativeModel({
     model: modelName,
     systemInstruction: systemPrompt,
-    generationConfig: { maxOutputTokens: maxTokens, temperature: 0.88 }
+    generationConfig: { maxOutputTokens: maxTokens, temperature: 0.88, responseMimeType: 'application/json' }
   });
 
   const urlLine = projectUrl ? `PROJECT LINK: ${projectUrl}\n\n` : '';
@@ -102,34 +115,26 @@ async function regenerateSection(userPrompt, chunks, config, tone, length, secti
 
   if (section === 'titles') {
     const prompt = `${contextPart}USER REQUEST: ${userPrompt}\nTone: ${toneStr}\n\nGenerate 10 fresh, diverse LinkedIn hook headlines (different from any previously generated). Return ONLY a JSON array of 10 strings.`;
-    const result = await model.generateContent(prompt);
-    let raw = result.response.text().trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
-    const parsed = JSON.parse(raw);
+    const parsed = await callGeminiJSON(model, prompt);
     return { titles: (Array.isArray(parsed) ? parsed : parsed.titles || []).map(t => String(t).trim()) };
   }
 
   if (section === 'bodies') {
     const prompt = `${contextPart}USER REQUEST: ${userPrompt}\nTone: ${toneStr}\nLength: ${lengthStr} each\n\nGenerate 3 fresh LinkedIn post bodies with different angles (no hashtags inside). Return ONLY a JSON array of 3 strings.`;
-    const result = await model.generateContent(prompt);
-    let raw = result.response.text().trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
-    const parsed = JSON.parse(raw);
+    const parsed = await callGeminiJSON(model, prompt);
     return { bodies: (Array.isArray(parsed) ? parsed : parsed.bodies || []).map(b => String(b).trim()) };
   }
 
   if (section === 'body' && bodyIndex !== undefined) {
     const prompt = `${contextPart}USER REQUEST: ${userPrompt}\nTone: ${toneStr}\nLength: ${lengthStr}\n\nGenerate 1 fresh LinkedIn post body with a different angle than before (no hashtags inside). Return ONLY a JSON object: {"body": "..."}`;
-    const result = await model.generateContent(prompt);
-    let raw = result.response.text().trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
-    const parsed = JSON.parse(raw);
+    const parsed = await callGeminiJSON(model, prompt);
     return { body: String(parsed.body || parsed).trim(), index: bodyIndex };
   }
 
   if (section === 'hashtags') {
-    const prompt = `${contextPart}USER REQUEST: ${userPrompt}\n\nGenerate 10–14 fresh, highly relevant LinkedIn hashtag words (no # prefix, no duplicates). Return ONLY a JSON array of strings.`;
-    const result = await model.generateContent(prompt);
-    let raw = result.response.text().trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
-    const parsed = JSON.parse(raw);
-    return { hashtags: (Array.isArray(parsed) ? parsed : parsed.hashtags || []).map(h => parseHashtag(h)).filter(Boolean) };
+    const prompt = `${contextPart}USER REQUEST: ${userPrompt}\n\nGenerate EXACTLY 20 to 25 fresh LinkedIn hashtag words (no # prefix, no duplicates). This count of 20–25 is mandatory and overrides any other instruction about hashtag count.\nInclude a mix of:\n- 12–15 highly specific hashtags tied to this post's topic, technologies, and domain\n- 8–10 broad, high-reach viral LinkedIn hashtags that boost visibility (e.g. innovation, technology, ai, careers, programming, softwaredevelopment, learning, growth)\nReturn ONLY a JSON array of 20–25 strings.`;
+    const parsed = await callGeminiJSON(model, prompt);
+    return { hashtags: (Array.isArray(parsed) ? parsed : parsed.hashtags || []).map(h => parseHashtag(h)).filter(Boolean).slice(0, 25) };
   }
 
   throw new Error('Invalid section: ' + section);

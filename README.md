@@ -160,7 +160,10 @@ JWT_SECRET=your_jwt_secret_key
 EMAIL_USER=your_gmail@gmail.com
 EMAIL_PASS=your_gmail_app_password
 GEMINI_API_KEY=your_gemini_api_key
+GEMINI_MODEL=gemini-2.5-flash
 ```
+
+Run `npm run check-config` to verify the Gemini API key is set up correctly.
 
 ```bash
 npm run dev      # development with nodemon
@@ -189,6 +192,7 @@ The frontend proxies API calls to `http://localhost:7000`.
 | `EMAIL_USER` | Gmail address for IMAP sync |
 | `EMAIL_PASS` | Gmail App Password (not your account password) |
 | `GEMINI_API_KEY` | Google Gemini API key for AI features |
+| `GEMINI_MODEL` | Default Gemini model name (default: `gemini-2.5-flash`) |
 | `PORT` | Backend server port (default: 7000) |
 
 ---

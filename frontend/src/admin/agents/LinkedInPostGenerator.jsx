@@ -16,7 +16,7 @@ The tone and body length will be specified in each request and must be followed 
 OUTPUT FORMAT — Respond ONLY with a valid JSON object with exactly 3 keys:
 - "titles": array of exactly 10 unique, diverse hook headlines or opening lines (strings)
 - "bodies": array of exactly 3 unique full LinkedIn post bodies (strings — NO hashtags inside bodies)
-- "hashtags": array of 10 to 14 relevant hashtag words (strings, no # prefix, no duplicates)
+- "hashtags": array of 20 to 25 hashtag words (strings, no # prefix, no duplicates) — mix of post-specific niche hashtags AND broad high-reach viral LinkedIn hashtags (e.g. innovation, technology, ai, careers, programming)
 
 Output ONLY the raw JSON object. No markdown fences, no code fences, no explanation outside the JSON.`;
 
@@ -188,7 +188,7 @@ export default function LinkedInPostGenerator() {
     const title = generation.titles[selectedTitle] || '';
     const body  = generation.bodies[selectedBody]  || '';
     const tags  = activeHashtags.map(h => `#${h}`).join(' ');
-    const assembled = (title ? title + '\n\n' : '') + body + (tags ? '\n\n' + tags : '') + (activeUrl ? '\n\n' + activeUrl : '');
+    const assembled = (title ? title + '\n\n' : '') + body + (activeUrl ? '\n\nLink: ' + activeUrl : '') + (tags ? '\n\n' + tags : '');
     setEditorText(assembled);
     setSavedId(null);
   }, [generation, selectedTitle, selectedBody, activeHashtags, activeUrl]);
@@ -817,7 +817,7 @@ export default function LinkedInPostGenerator() {
                   onChange={e => setConfig(c => ({ ...c, systemPrompt: e.target.value }))}
                 />
                 <span className="form-hint">
-                  Must instruct Gemini to return a JSON object with "titles" (10 strings), "bodies" (3 strings), and "hashtags" (10–14 strings, no # prefix).
+                  Must instruct Gemini to return a JSON object with "titles" (10 strings), "bodies" (3 strings), and "hashtags" (20–25 strings mixing niche + viral tags, no # prefix).
                 </span>
               </div>
 

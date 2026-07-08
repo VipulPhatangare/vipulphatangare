@@ -1,11 +1,13 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+// history: array of { role: 'user'|'model', parts: [{ text }] }, oldest first
 async function generateResponse(userMessage, chunks, projects = [], config, history = []) {
   const { systemPrompt, modelName, maxTokens } = config;
 
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
   const model = genAI.getGenerativeModel({
-    model: modelName,
+    model: modelName || process.env.GEMINI_MODEL || 'gemini-2.5-flash',
     systemInstruction: systemPrompt,
     generationConfig: {
       maxOutputTokens: maxTokens,
@@ -35,15 +37,7 @@ async function generateResponse(userMessage, chunks, projects = [], config, hist
     ? contextParts.join('\n\n===\n\n')
     : '(No direct context found — use conversation history if available)';
 
-  // Format previous turns for Gemini chat history
-  const geminiHistory = history
-    .filter(h => h.role && h.text)
-    .map(h => ({
-      role: h.role,
-      parts: [{ text: h.text }]
-    }));
-
-  const chat = model.startChat({ history: geminiHistory });
+  const chat = model.startChat({ history });
 
   const prompt = `CONTEXT:\n${contextBlock}\n\nQUESTION: ${userMessage}`;
   const result = await chat.sendMessage(prompt);
@@ -65,7 +59,8 @@ async function generateResponse(userMessage, chunks, projects = [], config, hist
       sourceLabel: c.sourceLabel || 'Knowledge Base',
       score: Math.round((c.score || 0) * 1000) / 1000
     })),
-    model: modelName
+    model: modelName,
+    rawText: raw
   };
 }
 

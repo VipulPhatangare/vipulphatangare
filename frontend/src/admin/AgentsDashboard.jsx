@@ -16,6 +16,14 @@ const AGENTS = [
     description: 'AI-powered email analysis — summarise, classify priority (TNP/College/Work), extract deadlines, generate replies, and send emails.',
     path: '/admin/agents/email',
     color: '#8b5cf6'
+  },
+  {
+    id: 'resume',
+    label: 'Resume Generator',
+    icon: 'fas fa-file-invoice',
+    description: 'Company-tailored, ATS-optimized resumes built from your portfolio data — JD analysis, project ranking, per-bullet variants, and PDF export.',
+    path: '/admin/agents/resume',
+    color: '#10b981'
   }
 ];
 

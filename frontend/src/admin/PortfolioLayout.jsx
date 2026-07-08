@@ -9,6 +9,8 @@ import ManageNotes        from './ManageNotes.jsx';
 import ManageProfile      from './ManageProfile.jsx';
 import ManageCertificates from './ManageCertificates.jsx';
 import ManageDocuments    from './ManageDocuments.jsx';
+import ManageEducation    from './ManageEducation.jsx';
+import ManageExperience   from './ManageExperience.jsx';
 
 const PORTFOLIO_NAV = [
   { path: '/admin/portfolio',              label: 'Dashboard',      icon: 'fas fa-tachometer-alt', exact: true },
@@ -16,6 +18,8 @@ const PORTFOLIO_NAV = [
   { path: '/admin/portfolio/achievements', label: 'Achievements',   icon: 'fas fa-trophy' },
   { path: '/admin/portfolio/research',     label: 'Research',       icon: 'fas fa-file-alt' },
   { path: '/admin/portfolio/skills',       label: 'Skills',         icon: 'fas fa-cogs' },
+  { path: '/admin/portfolio/education',    label: 'Education',      icon: 'fas fa-graduation-cap' },
+  { path: '/admin/portfolio/experience',   label: 'Experience',     icon: 'fas fa-briefcase' },
   { path: '/admin/portfolio/notes',        label: 'Study Material', icon: 'fas fa-book' },
   { path: '/admin/portfolio/profile',      label: 'Profile',        icon: 'fas fa-user' },
   { path: '/admin/portfolio/certificates', label: 'Gallery',   icon: 'fas fa-images' },
@@ -94,6 +98,8 @@ export default function PortfolioLayout() {
             <Route path="/achievements"  element={<ManageAchievements />} />
             <Route path="/research"      element={<ManageResearch />} />
             <Route path="/skills"        element={<ManageSkills />} />
+            <Route path="/education"     element={<ManageEducation />} />
+            <Route path="/experience"    element={<ManageExperience />} />
             <Route path="/notes"         element={<ManageNotes />} />
             <Route path="/profile"       element={<ManageProfile />} />
             <Route path="/certificates"  element={<ManageCertificates />} />

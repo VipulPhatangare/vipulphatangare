@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const router = express.Router();
 const multer = require('multer');
 const pdfParse = require('pdf-parse');
@@ -6,11 +7,14 @@ const auth = require('../middleware/auth');
 const ChatbotChunk = require('../models/ChatbotChunk');
 const ChatbotConfig = require('../models/ChatbotConfig');
 const { DEFAULT_SYSTEM_PROMPT } = require('../models/ChatbotConfig');
+const ChatMessage = require('../models/ChatMessage');
 const Project = require('../models/Project');
 const { chunkText } = require('../utils/chunker');
 const { embed, embedBatch } = require('../utils/embedder');
 const { retrieve } = require('../utils/retriever');
 const { generateResponse } = require('../utils/generator');
+
+const HISTORY_TURNS = 10;
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -63,18 +67,35 @@ async function findRelatedProjects(message) {
 // POST /api/chatbot/chat
 router.post('/chat', async (req, res) => {
   try {
-    const { message, history = [] } = req.body;
+    const { message } = req.body;
     if (!message?.trim()) return res.status(400).json({ error: 'Message is required' });
+    const sessionId = req.body.sessionId?.trim() || crypto.randomUUID();
+    const trimmedMessage = message.trim();
+
+    await ChatMessage.create({ sessionId, role: 'user', text: trimmedMessage });
+
+    // Last HISTORY_TURNS messages preceding this one, oldest first
+    const priorMessages = await ChatMessage.find({ sessionId })
+      .sort({ createdAt: -1 })
+      .limit(HISTORY_TURNS + 1)
+      .lean();
+    const history = priorMessages
+      .slice(1)
+      .reverse()
+      .map(m => ({ role: m.role, parts: [{ text: m.text }] }));
 
     const config = await getConfig();
-    const queryVector = await embed(message.trim());
+    const queryVector = await embed(trimmedMessage);
     const [chunks, projects] = await Promise.all([
       retrieve(queryVector, config.topK),
-      findRelatedProjects(message.trim())
+      findRelatedProjects(trimmedMessage)
     ]);
-    const result = await generateResponse(message.trim(), chunks, projects, config, history);
+    const result = await generateResponse(trimmedMessage, chunks, projects, config, history);
 
-    res.json(result);
+    await ChatMessage.create({ sessionId, role: 'model', text: result.rawText });
+    delete result.rawText;
+
+    res.json({ ...result, sessionId });
   } catch (err) {
     console.error('Chat error:', err.message);
     res.status(500).json({ error: 'Failed to generate response', detail: err.message });
