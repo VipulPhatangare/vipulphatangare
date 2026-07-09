@@ -1,7 +1,7 @@
 const cron = require('node-cron');
 const Email  = require('../models/Email');
 const { fetchGmailEmails } = require('./gmailFetcher');
-const { analyzeEmail }     = require('./emailAnalyzer');
+const { analyzeEmail, isTrustedSender, getCandidateContext, getEmailAgentConfig } = require('./emailAnalyzer');
 
 // In-memory status — readable via GET /api/emails/sync-status
 const status = {
@@ -69,12 +69,27 @@ async function runSync() {
     // Batch analyze with concurrency 3 (lighter than manual sync)
     const CONCURRENCY = 3;
     let saved = 0;
+    const config = await getEmailAgentConfig();
+    const candidateContext = await getCandidateContext();
 
     for (let i = 0; i < newEmails.length; i += CONCURRENCY) {
       const batch = newEmails.slice(i, i + CONCURRENCY);
       const results = await Promise.all(batch.map(async (email) => {
+        // Only trusted-sender (TNP) mail gets AI analysis — everything else is saved as-is so it still shows in Inbox.
+        if (!isTrustedSender(email.from, config.trustedSenders)) {
+          try {
+            await Email.create({
+              gmailMessageId: email.gmailMessageId,
+              from: email.from, subject: email.subject, body: email.body,
+              priority: 'low', category: 'general',
+              status: 'unread', direction: 'incoming', createdAt: email.receivedAt
+            });
+            return true;
+          } catch { return false; }
+        }
+
         try {
-          const analysis = await analyzeEmail(email.subject, email.body);
+          const analysis = await analyzeEmail(email.subject, email.body, { candidateContext, guidance: config.analysisGuidance });
           await Email.create({
             gmailMessageId: email.gmailMessageId,
             from:           email.from,
@@ -83,6 +98,8 @@ async function runSync() {
             summary:        analysis.summary,
             priority:       analysis.priority,
             category:       analysis.category,
+            eligible:       analysis.eligible,
+            eligibilityReason: analysis.eligibilityReason,
             deadline:       analysis.deadline || null,
             deadlineText:   analysis.deadlineText,
             tags:           analysis.tags,

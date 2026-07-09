@@ -3,7 +3,8 @@ const router  = express.Router();
 const nodemailer = require('nodemailer');
 const auth    = require('../middleware/auth');
 const Email   = require('../models/Email');
-const { analyzeEmail, generateReply, generateDigest } = require('../utils/emailAnalyzer');
+const EmailAgentConfig = require('../models/EmailAgentConfig');
+const { analyzeEmail, generateReply, generateDigest, isTrustedSender, getCandidateContext, getEmailAgentConfig } = require('../utils/emailAnalyzer');
 const { fetchGmailEmails } = require('../utils/gmailFetcher');
 const emailScheduler = require('../utils/emailScheduler');
 
@@ -52,14 +53,19 @@ router.post('/generate-reply', auth, async (req, res) => {
 // GET /api/emails/digest
 router.get('/digest', auth, async (req, res) => {
   try {
-    const emails = await Email.find({ status: { $in: ['unread', 'read'] }, direction: 'incoming' })
+    // Scope the digest to AI-analysed placement (TNP) mail only — since only trusted-sender
+    // mail is analysed, `summary` is a reliable "was analysed" marker.
+    const emails = await Email.find({
+      status: { $in: ['unread', 'read'] }, direction: 'incoming',
+      summary: { $ne: '' }
+    })
       .sort({ priority: 1, createdAt: -1 })
       .limit(30)
-      .select('subject from priority category summary body deadline deadlineText requiresReply replyUrgency actionItems tags');
+      .select('subject from priority category summary body deadline deadlineText requiresReply replyUrgency actionItems tags eligible');
 
     if (emails.length === 0) {
       return res.json({
-        digest: 'Your inbox is empty. No unread emails — you\'re all caught up!',
+        digest: 'No placement (TNP) mail to brief you on right now — you\'re all caught up!',
         stats: { total: 0, high: 0, needsReply: 0, withDeadline: 0, actionCount: 0 }
       });
     }
@@ -85,17 +91,28 @@ router.get('/digest', auth, async (req, res) => {
 // Re-runs AI on emails that have no summary (analysis failed during sync)
 router.post('/bulk-reanalyze', auth, async (req, res) => {
   try {
-    const emails = await Email.find({ summary: '', direction: 'incoming' }).limit(20);
+    const config = await getEmailAgentConfig();
+    const senderRegex = config.trustedSenders
+      .map(s => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      .join('|');
+
+    const emails = await Email.find({
+      summary: '', direction: 'incoming',
+      from: { $regex: senderRegex, $options: 'i' }
+    }).limit(20);
     if (emails.length === 0) return res.json({ reanalyzed: 0 });
 
+    const candidateContext = await getCandidateContext();
     let reanalyzed = 0;
     for (const email of emails) {
       try {
-        const analysis = await analyzeEmail(email.subject, email.body);
+        const analysis = await analyzeEmail(email.subject, email.body, { candidateContext, guidance: config.analysisGuidance });
         await Email.findByIdAndUpdate(email._id, {
           summary:      analysis.summary,
           priority:     analysis.priority,
           category:     analysis.category,
+          eligible:     analysis.eligible,
+          eligibilityReason: analysis.eligibilityReason,
           deadline:     analysis.deadline,
           deadlineText: analysis.deadlineText,
           tags:         analysis.tags,
@@ -227,6 +244,8 @@ router.post('/sync-gmail', auth, async (req, res) => {
       return res.json({ fetched: raw.length, saved: 0, skipped, emails: [] });
     }
 
+    const config = await getEmailAgentConfig();
+    const candidateContext = await getCandidateContext();
     const CONCURRENCY = 4;
     const saved = [];
 
@@ -234,8 +253,25 @@ router.post('/sync-gmail', auth, async (req, res) => {
       const batch = newEmails.slice(i, i + CONCURRENCY);
 
       const results = await Promise.all(batch.map(async (email) => {
+        // Only trusted-sender (TNP) mail gets AI analysis — everything else is saved as-is so it still shows in Inbox.
+        if (!isTrustedSender(email.from, config.trustedSenders)) {
+          try {
+            return await Email.create({
+              gmailMessageId: email.gmailMessageId,
+              from:     email.from,
+              subject:  email.subject,
+              body:     email.body,
+              priority: 'low',
+              category: 'general',
+              status:   'unread',
+              direction: 'incoming',
+              createdAt: email.receivedAt
+            });
+          } catch { return null; }
+        }
+
         try {
-          const analysis = await analyzeEmail(email.subject, email.body);
+          const analysis = await analyzeEmail(email.subject, email.body, { candidateContext, guidance: config.analysisGuidance });
 
           return await Email.create({
             gmailMessageId: email.gmailMessageId,
@@ -245,6 +281,8 @@ router.post('/sync-gmail', auth, async (req, res) => {
             summary:        analysis.summary,
             priority:       analysis.priority,
             category:       analysis.category,
+            eligible:       analysis.eligible,
+            eligibilityReason: analysis.eligibilityReason,
             deadline:       analysis.deadline || null,
             deadlineText:   analysis.deadlineText,
             tags:           analysis.tags,
@@ -277,7 +315,9 @@ router.post('/sync-gmail', auth, async (req, res) => {
       }
     }
 
-    res.json({ fetched: raw.length, saved: saved.length, skipped, emails: saved });
+    // Only trusted-sender (TNP) mail is AI-analysed — report that split so the UI can show it honestly.
+    const analyzed = saved.filter(e => isTrustedSender(e.from, config.trustedSenders)).length;
+    res.json({ fetched: raw.length, saved: saved.length, analyzed, skipped, emails: saved });
 
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -288,7 +328,7 @@ router.post('/sync-gmail', auth, async (req, res) => {
 // GET /api/emails?priority=high&category=tnp&status=unread&hasDeadline=true&requiresReply=true&q=search&page=1
 router.get('/', auth, async (req, res) => {
   try {
-    const { priority, category, status, hasDeadline, direction, requiresReply, q, page = 1 } = req.query;
+    const { priority, category, status, hasDeadline, direction, requiresReply, marked, eligible, q, page = 1 } = req.query;
     const filter = {};
 
     if (priority)    filter.priority  = priority;
@@ -297,6 +337,9 @@ router.get('/', auth, async (req, res) => {
     if (direction)   filter.direction = direction;
     if (hasDeadline === 'true')    filter.deadline     = { $ne: null };
     if (requiresReply === 'true')  filter.requiresReply = true;
+    if (marked === 'true')         filter.marked        = true;
+    if (eligible === 'false')      filter.eligible      = false;
+    if (eligible === 'true')       filter.eligible      = true;
 
     if (q?.trim()) {
       const regex = new RegExp(q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
@@ -322,7 +365,7 @@ router.get('/deadlines', auth, async (req, res) => {
   try {
     const emails = await Email.find({ deadline: { $ne: null } })
       .sort({ deadline: 1 })
-      .select('subject from priority category deadline deadlineText status tags createdAt');
+      .select('subject from priority category deadline deadlineText status tags createdAt eligible eligibilityReason marked');
     res.json(emails);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -342,13 +385,26 @@ router.get('/followups', auth, async (req, res) => {
   }
 });
 
+// ── GET ONE EMAIL (full) ─────────────────────────────────
+// GET /api/emails/:id  — used when opening the detail popup from a partial (deadline) list
+router.get('/:id', auth, async (req, res) => {
+  try {
+    const email = await Email.findById(req.params.id);
+    if (!email) return res.status(404).json({ error: 'Email not found' });
+    res.json(email);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── UPDATE EMAIL ─────────────────────────────────────────
 // PATCH /api/emails/:id
 router.patch('/:id', auth, async (req, res) => {
   try {
     const allowed = [
       'status', 'replyDraft', 'deadline', 'deadlineText',
-      'priority', 'category', 'tags', 'summary',
+      'priority', 'category', 'tags', 'summary', 'marked',
+      'eligible', 'eligibilityReason',
       'followUpDate', 'followUpNote', 'requiresReply', 'replyUrgency', 'actionItems'
     ];
     const update = {};
@@ -368,6 +424,51 @@ router.delete('/:id', auth, async (req, res) => {
   try {
     await Email.findByIdAndDelete(req.params.id);
     res.json({ message: 'Email deleted' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── AGENT CONFIG (settings) ──────────────────────────────
+// GET /api/emails/config/settings
+router.get('/config/settings', auth, async (req, res) => {
+  try {
+    const config = await getEmailAgentConfig();
+    res.json({
+      trustedSenders:   config.trustedSenders,
+      analysisGuidance: config.analysisGuidance,
+      defaultGuidance:  EmailAgentConfig.DEFAULT_GUIDANCE
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/emails/config/settings  { trustedSenders?, analysisGuidance?, resetGuidance? }
+router.put('/config/settings', auth, async (req, res) => {
+  try {
+    const config = await getEmailAgentConfig();
+    const { trustedSenders, analysisGuidance, resetGuidance } = req.body;
+
+    if (Array.isArray(trustedSenders)) {
+      const cleaned = [...new Set(
+        trustedSenders.map(s => String(s).toLowerCase().trim()).filter(Boolean)
+      )];
+      config.trustedSenders = cleaned.length ? cleaned : EmailAgentConfig.DEFAULT_SENDERS;
+    }
+
+    if (resetGuidance) {
+      config.analysisGuidance = EmailAgentConfig.DEFAULT_GUIDANCE;
+    } else if (typeof analysisGuidance === 'string') {
+      config.analysisGuidance = analysisGuidance.trim() || EmailAgentConfig.DEFAULT_GUIDANCE;
+    }
+
+    await config.save();
+    res.json({
+      trustedSenders:   config.trustedSenders,
+      analysisGuidance: config.analysisGuidance,
+      defaultGuidance:  EmailAgentConfig.DEFAULT_GUIDANCE
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

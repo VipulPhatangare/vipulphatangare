@@ -11,6 +11,7 @@ import ManageCertificates from './ManageCertificates.jsx';
 import ManageDocuments    from './ManageDocuments.jsx';
 import ManageEducation    from './ManageEducation.jsx';
 import ManageExperience   from './ManageExperience.jsx';
+import useSidebarCollapsed from './useSidebarCollapsed.js';
 
 const PORTFOLIO_NAV = [
   { path: '/admin/portfolio',              label: 'Dashboard',      icon: 'fas fa-tachometer-alt', exact: true },
@@ -30,6 +31,7 @@ export default function PortfolioLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [collapsed, toggleCollapsed] = useSidebarCollapsed();
 
   const currentPath = location.pathname;
 
@@ -43,55 +45,66 @@ export default function PortfolioLayout() {
   )?.label || 'Portfolio';
 
   return (
-    <div className="agents-layout">
+    <div className="portfolio-layout">
       {sidebarOpen && (
-        <div className="agents-overlay" onClick={() => setSidebarOpen(false)} />
+        <div className="portfolio-overlay" onClick={() => setSidebarOpen(false)} />
       )}
 
-      <aside className={`agents-sidebar${sidebarOpen ? ' open' : ''}`}>
-        <div className="agents-sidebar-header">
-          <div className="agents-sidebar-title">
-            <i className="fas fa-briefcase"></i>
-            <span>Portfolio</span>
+      <aside className={`portfolio-sidebar${sidebarOpen ? ' open' : ''}${collapsed ? ' collapsed' : ''}`}>
+        <div className="portfolio-sidebar-header">
+          <div className="portfolio-sidebar-title-group">
+            <button className="portfolio-sidebar-back" onClick={() => navigate('/admin')} title="Back to Admin Panel">
+              <i className="fas fa-arrow-left"></i>
+            </button>
+            <div className="portfolio-sidebar-title">
+              <i className="fas fa-briefcase"></i>
+              <span className="collapse-hide">Portfolio</span>
+            </div>
           </div>
-          <button className="agents-sidebar-close" onClick={() => setSidebarOpen(false)}>
-            <i className="fas fa-times"></i>
-          </button>
+          <div className="sidebar-header-actions">
+            <button className="sidebar-collapse-btn" onClick={toggleCollapsed} title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
+              <i className={`fas ${collapsed ? 'fa-angle-double-right' : 'fa-angle-double-left'}`}></i>
+            </button>
+            <button className="portfolio-sidebar-close" onClick={() => setSidebarOpen(false)}>
+              <i className="fas fa-times"></i>
+            </button>
+          </div>
         </div>
 
-        <nav className="agents-nav">
+        <nav className="portfolio-nav">
           {PORTFOLIO_NAV.map(n => (
             <a
               key={n.path}
-              className={`agents-nav-link${
+              className={`portfolio-nav-link${
                 n.exact
                   ? currentPath === n.path ? ' active' : ''
                   : currentPath.startsWith(n.path) ? ' active' : ''
               }`}
               href={n.path}
               onClick={(e) => { e.preventDefault(); handleNav(n.path); }}
+              title={n.label}
             >
               <i className={n.icon}></i>
-              {n.label}
+              <span className="collapse-hide">{n.label}</span>
             </a>
           ))}
         </nav>
       </aside>
 
-      <div className="agents-content">
-        <div className="agents-topbar">
-          <button className="agents-back-btn" onClick={() => navigate('/admin')} title="Back to Admin">
+      <div className="portfolio-content">
+        <div className="portfolio-topbar">
+          <button className="portfolio-back-btn" onClick={() => navigate('/admin')} title="Back to Admin">
             <i className="fas fa-arrow-left"></i>
           </button>
-          <span className="agents-topbar-label">
+          <span className="portfolio-topbar-label">
             <i className="fas fa-briefcase"></i> {activeLabel}
           </span>
-          <button className="agents-hamburger" onClick={() => setSidebarOpen(o => !o)} aria-label="Toggle portfolio sidebar">
+          <button className="portfolio-hamburger" onClick={() => setSidebarOpen(o => !o)} aria-label="Toggle portfolio sidebar">
             <i className="fas fa-bars"></i>
           </button>
         </div>
 
-        <div className="agents-page-body">
+        <div className="portfolio-page-body">
           <Routes>
             <Route path="/"              element={<DashboardHome />} />
             <Route path="/projects"      element={<ManageProjects />} />

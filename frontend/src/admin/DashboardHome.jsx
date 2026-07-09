@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/axios.js';
+import { EmailModal } from './agents/EmailAnalyser.jsx';
 
 function todayStr() {
   const d = new Date();
@@ -52,6 +53,26 @@ export default function DashboardHome() {
   const [copiedId, setCopiedId]       = useState(null);
 
   const [emailStats, setEmailStats]   = useState(null);
+  const [deadlines, setDeadlines]     = useState([]);
+  const [activeEmail, setActiveEmail] = useState(null);  // mail open in quick-access popup
+  const [toast, setToast]             = useState(null);
+
+  const flash = (type, text) => { setToast({ type, text }); setTimeout(() => setToast(null), 3500); };
+
+  // Curated deadline list: recent overdue first, then soonest upcoming, capped at 5. Eligible only.
+  const loadDeadlines = () => {
+    api.get('/emails/deadlines').then(res => {
+      const now = Date.now();
+      const all = (res.data || []).filter(e => e.eligible !== false);
+      const overdue = all
+        .filter(e => new Date(e.deadline).getTime() < now)
+        .sort((a, b) => new Date(b.deadline) - new Date(a.deadline));
+      const upcoming = all
+        .filter(e => new Date(e.deadline).getTime() >= now)
+        .sort((a, b) => new Date(a.deadline) - new Date(b.deadline));
+      setDeadlines([...overdue.slice(0, 2), ...upcoming].slice(0, 5));
+    }).catch(() => {});
+  };
 
   useEffect(() => {
     // Today's todos
@@ -69,7 +90,18 @@ export default function DashboardHome() {
         high:   (res.data.emails || []).filter(e => e.priority === 'high').length,
       });
     }).catch(() => {});
+
+    loadDeadlines();
   }, []);
+
+  // Deadline rows carry only partial data — fetch the full email for the popup.
+  const openDeadline = async (d) => {
+    try { const { data } = await api.get(`/emails/${d._id}`); setActiveEmail(data); }
+    catch { setActiveEmail(d); }
+  };
+  const modalStatusChange = (id, status) => setActiveEmail(prev => prev && prev._id === id ? { ...prev, status } : prev);
+  const modalUpdate = (id, updated) => { setActiveEmail(prev => prev && prev._id === id ? updated : prev); loadDeadlines(); };
+  const modalDelete = () => { setActiveEmail(null); loadDeadlines(); flash('success', 'Email deleted'); };
 
   function loadTodos() {
     api.get(`/todos?date=${today}`).then(res => setTodos(res.data)).catch(console.error);
@@ -157,7 +189,10 @@ export default function DashboardHome() {
       {/* ── Main Grid ──────────────────────────── */}
       <div className="dh-grid">
 
-        {/* ── LEFT: Daily Todos ─────────────────── */}
+        {/* ── LEFT column ────────────────────────── */}
+        <div className="dh-left">
+
+        {/* Daily Todos */}
         <div className="dh-panel">
           <div className="dh-panel-hd">
             <div className="dh-panel-title">
@@ -247,6 +282,52 @@ export default function DashboardHome() {
               <i className={addingTodo ? 'fas fa-spinner fa-spin' : 'fas fa-plus'}></i>
             </button>
           </form>
+        </div>
+
+        {/* Deadlines */}
+        <div className="dh-panel">
+          <div className="dh-panel-hd">
+            <div className="dh-panel-title">
+              <i className="fas fa-clock"></i>
+              <span>Deadlines</span>
+            </div>
+            <button className="dh-panel-link" onClick={() => navigate('/admin/agents/email')}>
+              View all <i className="fas fa-arrow-right"></i>
+            </button>
+          </div>
+
+          {deadlines.length === 0 ? (
+            <div className="dh-empty">
+              <i className="fas fa-calendar-check"></i>
+              <span>No upcoming deadlines</span>
+            </div>
+          ) : (
+            <div className="dh-deadline-list">
+              {deadlines.map(d => {
+                const days = Math.ceil((new Date(d.deadline) - new Date()) / 86400000);
+                const color = days < 0 ? '#94a3b8' : days <= 2 ? '#ff6b6b' : days <= 7 ? '#ffd43b' : '#51cf66';
+                return (
+                  <div
+                    key={d._id}
+                    className="dh-deadline-row dh-deadline-clickable"
+                    onClick={() => openDeadline(d)}
+                    title="Open"
+                  >
+                    <span className="dh-deadline-chip" style={{ color, background: `${color}18` }}>
+                      {days < 0 ? `${Math.abs(days)}d ago` : days === 0 ? 'Today' : `${days}d`}
+                    </span>
+                    <div className="dh-deadline-meta">
+                      <span className="dh-deadline-subject">{d.subject}</span>
+                      {d.deadlineText && <span className="dh-deadline-text">{d.deadlineText}</span>}
+                    </div>
+                    <i className="fas fa-chevron-right dh-deadline-arrow"></i>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
         </div>
 
         {/* ── RIGHT column ──────────────────────── */}
@@ -364,6 +445,24 @@ export default function DashboardHome() {
 
         </div>
       </div>
+
+      {toast && (
+        <div className={`admin-alert admin-alert-${toast.type}`} style={{ position: 'fixed', bottom: '1.5rem', right: '1.5rem', zIndex: 1100, maxWidth: 360 }}>
+          <i className={`fas ${toast.type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'}`}></i>
+          {toast.text}
+        </div>
+      )}
+
+      {activeEmail && (
+        <EmailModal
+          email={activeEmail}
+          onClose={() => setActiveEmail(null)}
+          onStatusChange={modalStatusChange}
+          onUpdate={modalUpdate}
+          onDelete={modalDelete}
+          flash={flash}
+        />
+      )}
     </div>
   );
 }

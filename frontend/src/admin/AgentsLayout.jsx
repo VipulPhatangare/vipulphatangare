@@ -4,6 +4,7 @@ import AgentsDashboard from './AgentsDashboard.jsx';
 import LinkedInPostGenerator from './agents/LinkedInPostGenerator.jsx';
 import EmailAnalyser from './agents/EmailAnalyser.jsx';
 import ResumeGenerator from './agents/resume/ResumeGenerator.jsx';
+import useSidebarCollapsed from './useSidebarCollapsed.js';
 
 const AGENT_NAV = [
   { path: '/admin/agents', label: 'Overview', icon: 'fas fa-th-large', exact: true },
@@ -16,6 +17,7 @@ export default function AgentsLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [collapsed, toggleCollapsed] = useSidebarCollapsed();
 
   const currentPath = location.pathname;
 
@@ -34,15 +36,25 @@ export default function AgentsLayout() {
         <div className="agents-overlay" onClick={() => setSidebarOpen(false)} />
       )}
 
-      <aside className={`agents-sidebar${sidebarOpen ? ' open' : ''}`}>
+      <aside className={`agents-sidebar${sidebarOpen ? ' open' : ''}${collapsed ? ' collapsed' : ''}`}>
         <div className="agents-sidebar-header">
-          <div className="agents-sidebar-title">
-            <i className="fas fa-brain"></i>
-            <span>My Agents</span>
+          <div className="agents-sidebar-title-group">
+            <button className="agents-sidebar-back" onClick={() => navigate('/admin')} title="Back to Admin Panel">
+              <i className="fas fa-arrow-left"></i>
+            </button>
+            <div className="agents-sidebar-title">
+              <i className="fas fa-brain"></i>
+              <span className="collapse-hide">My Agents</span>
+            </div>
           </div>
-          <button className="agents-sidebar-close" onClick={() => setSidebarOpen(false)}>
-            <i className="fas fa-times"></i>
-          </button>
+          <div className="sidebar-header-actions">
+            <button className="sidebar-collapse-btn" onClick={toggleCollapsed} title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
+              <i className={`fas ${collapsed ? 'fa-angle-double-right' : 'fa-angle-double-left'}`}></i>
+            </button>
+            <button className="agents-sidebar-close" onClick={() => setSidebarOpen(false)}>
+              <i className="fas fa-times"></i>
+            </button>
+          </div>
         </div>
 
         <nav className="agents-nav">
@@ -54,9 +66,10 @@ export default function AgentsLayout() {
               }`}
               href={n.path}
               onClick={(e) => { e.preventDefault(); handleNav(n.path); }}
+              title={n.label}
             >
               <i className={n.icon}></i>
-              {n.label}
+              <span className="collapse-hide">{n.label}</span>
             </a>
           ))}
         </nav>

@@ -103,72 +103,105 @@ function FollowUpBadge({ followUpDate }) {
   );
 }
 
-// ── EMAIL CARD ───────────────────────────────────────────
+function EligibilityBadge({ eligible, reason }) {
+  if (eligible === false) {
+    return (
+      <span className="em-badge" style={{ color: '#ef4444', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)' }}>
+        <i className="fas fa-ban"></i>
+        <span>Can't apply{reason ? ` · ${reason}` : ''}</span>
+      </span>
+    );
+  }
+  // Positive badge only when the AI gave a reason (i.e. an actual TNP opportunity) —
+  // avoids a meaningless "You qualify" on ordinary mail.
+  if (reason) {
+    return (
+      <span className="em-badge" style={{ color: '#22c55e', background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.3)' }}>
+        <i className="fas fa-check-circle"></i>
+        <span>You qualify</span>
+      </span>
+    );
+  }
+  return null;
+}
 
-function EmailCard({ email, onStatusChange, onDelete, onUpdate }) {
-  const [expanded, setExpanded]     = useState(false);
-  const [delConfirm, setDelConfirm] = useState(false);
-  const [updating, setUpdating]     = useState(false);
-  const [followUpDate, setFollowUpDate] = useState(
-    email.followUpDate ? new Date(email.followUpDate).toISOString().slice(0, 10) : ''
+function DeadlineItem({ email, dateField = 'deadline', textField = 'deadlineText' }) {
+  const rawDate = email[dateField];
+  const days = deadlineDays(rawDate);
+  let urgency = 'safe';
+  if (days < 0) urgency = 'overdue';
+  else if (days <= 2) urgency = 'urgent';
+  else if (days <= 7) urgency = 'warning';
+
+  const colors = {
+    overdue: { border: '#ef444466', bg: 'rgba(239,68,68,0.05)', text: '#ef4444' },
+    urgent:  { border: '#ef444466', bg: 'rgba(239,68,68,0.05)', text: '#ef4444' },
+    warning: { border: '#f59e0b66', bg: 'rgba(245,158,11,0.05)', text: '#f59e0b' },
+    safe:    { border: '#22c55e44', bg: 'rgba(34,197,94,0.05)', text: '#22c55e' }
+  };
+  const c = colors[urgency];
+  const dateStr = new Date(rawDate).toLocaleDateString('en-IN', {
+    weekday: 'short', day: 'numeric', month: 'short', year: 'numeric'
+  });
+
+  return (
+    <div className="em-deadline-item" style={{ borderLeft: `3px solid ${c.border}`, background: c.bg }}>
+      <div className="em-deadline-left">
+        <div className="em-deadline-counter" style={{ color: c.text, background: `${c.text}18` }}>
+          {days < 0 ? `${Math.abs(days)}d ago` : days === 0 ? 'Today!' : `${days}d`}
+        </div>
+        <div className="em-deadline-textwrap">
+          <div className="em-deadline-subject" title={email.subject}>{email.subject}</div>
+          <div className="em-deadline-meta">
+            {email[textField] && <span><i className="fas fa-clock"></i> {email[textField]}</span>}
+            <span><i className="fas fa-calendar-alt"></i> {dateStr}</span>
+            {email.from && <span className="em-deadline-from"><i className="fas fa-user-circle"></i> {email.from}</span>}
+            {email.followUpNote && <span><i className="fas fa-sticky-note"></i> {email.followUpNote}</span>}
+          </div>
+        </div>
+      </div>
+      <div className="em-deadline-right">
+        <PriorityBadge priority={email.priority} />
+        {email.eligible === false && <EligibilityBadge eligible={false} reason={email.eligibilityReason} />}
+        {email.tags?.slice(0, 2).map((t, i) => <span key={i} className="em-tag">#{t}</span>)}
+      </div>
+    </div>
   );
-  const [followUpNote, setFollowUpNote] = useState(email.followUpNote || '');
-  const [savingFollowUp, setSavingFollowUp] = useState(false);
+}
 
-  const updateStatus = async (status) => {
-    setUpdating(true);
-    try {
-      await api.patch(`/emails/${email._id}`, { status });
-      onStatusChange(email._id, status);
-    } finally {
-      setUpdating(false);
-    }
-  };
+// ── EMAIL CARD (compact, opens modal) ────────────────────
 
-  const handleDelete = async () => {
-    try { await api.delete(`/emails/${email._id}`); onDelete(email._id); }
-    catch { /* ignore */ }
-  };
-
-  const handleSaveFollowUp = async () => {
-    setSavingFollowUp(true);
-    try {
-      const updated = await api.patch(`/emails/${email._id}`, {
-        followUpDate: followUpDate ? new Date(followUpDate).toISOString() : null,
-        followUpNote
-      });
-      onUpdate(email._id, updated.data);
-    } finally {
-      setSavingFollowUp(false);
-    }
-  };
-
-  const handleClearFollowUp = async () => {
-    setFollowUpDate('');
-    setFollowUpNote('');
-    setSavingFollowUp(true);
-    try {
-      const updated = await api.patch(`/emails/${email._id}`, { followUpDate: null, followUpNote: '' });
-      onUpdate(email._id, updated.data);
-    } finally {
-      setSavingFollowUp(false);
-    }
-  };
-
+function EmailCard({ email, onOpen, onToggleMark }) {
   const isUnread = email.status === 'unread';
+  const ineligible = email.eligible === false;
   const date = new Date(email.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
   return (
-    <div className={`em-card${isUnread ? ' em-card-unread' : ''}`}>
-      <div className="em-card-header" onClick={() => { setExpanded(e => !e); if (isUnread) updateStatus('read'); }}>
+    <div
+      className={`em-card em-card-clickable${isUnread ? ' em-card-unread' : ''}${ineligible ? ' em-card-ineligible' : ''}`}
+      onClick={() => onOpen(email)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={e => { if (e.key === 'Enter') onOpen(email); }}
+    >
+      <div className="em-card-header">
 
-        {/* Row 1 — Subject + chevron */}
+        {/* Row 1 — Subject + star + open chevron */}
         <div className="em-card-row1">
           <div className="em-card-subject-wrap">
             {isUnread && <span className="em-unread-dot" />}
             <span className="em-card-subject">{email.subject}</span>
           </div>
-          <i className={`fas fa-chevron-${expanded ? 'up' : 'down'} em-chevron`}></i>
+          <div className="em-card-row1-actions">
+            <button
+              className={`em-star-btn${email.marked ? ' active' : ''}`}
+              title={email.marked ? 'Unmark important' : 'Mark important'}
+              onClick={e => { e.stopPropagation(); onToggleMark(email); }}
+            >
+              <i className={`${email.marked ? 'fas' : 'far'} fa-star`}></i>
+            </button>
+            <i className="fas fa-chevron-right em-chevron"></i>
+          </div>
         </div>
 
         {/* Row 2 — Sender + date */}
@@ -194,6 +227,7 @@ function EmailCard({ email, onStatusChange, onDelete, onUpdate }) {
         <div className="em-card-badges">
           <PriorityBadge priority={email.priority} />
           <CategoryBadge category={email.category} />
+          {(email.eligible === false || email.eligibilityReason) && <EligibilityBadge eligible={email.eligible} reason={email.eligibilityReason} />}
           {email.requiresReply && <ReplyUrgencyBadge urgency={email.replyUrgency} />}
           {email.deadline && <DeadlineBadge deadline={email.deadline} deadlineText={email.deadlineText} />}
           {email.followUpDate && <FollowUpBadge followUpDate={email.followUpDate} />}
@@ -204,11 +238,138 @@ function EmailCard({ email, onStatusChange, onDelete, onUpdate }) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
 
-      {expanded && (
-        <div className="em-card-body">
+// ── EMAIL MODAL (popup with all actions) ─────────────────
+// Exported so the dashboard can reuse the same popup for quick access.
 
-          {/* AI Summary */}
+export function EmailModal({ email, onClose, onStatusChange, onUpdate, onDelete, flash }) {
+  const [updating, setUpdating]     = useState(false);
+  const [delConfirm, setDelConfirm] = useState(false);
+  const [followUpDate, setFollowUpDate] = useState(
+    email.followUpDate ? new Date(email.followUpDate).toISOString().slice(0, 10) : ''
+  );
+  const [followUpNote, setFollowUpNote] = useState(email.followUpNote || '');
+  const [savingFollowUp, setSavingFollowUp] = useState(false);
+  const [reply, setReply]           = useState(email.replyDraft || '');
+  const [genReply, setGenReply]     = useState(false);
+  const [savingReply, setSavingReply] = useState(false);
+
+  // Mark unread → read on open
+  useEffect(() => {
+    if (email.status === 'unread') {
+      api.patch(`/emails/${email._id}`, { status: 'read' })
+        .then(() => onStatusChange(email._id, 'read'))
+        .catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Esc closes + lock background scroll while open
+  useEffect(() => {
+    const onKey = e => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    document.body.style.overflow = 'hidden';
+    return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = ''; };
+  }, [onClose]);
+
+  const updateStatus = async (status) => {
+    setUpdating(true);
+    try { await api.patch(`/emails/${email._id}`, { status }); onStatusChange(email._id, status); }
+    finally { setUpdating(false); }
+  };
+
+  const toggleMark = async () => {
+    try {
+      const { data } = await api.patch(`/emails/${email._id}`, { marked: !email.marked });
+      onUpdate(email._id, data);
+    } catch { /* ignore */ }
+  };
+
+  const handleDelete = async () => {
+    try { await api.delete(`/emails/${email._id}`); onDelete(email._id); onClose(); }
+    catch { /* ignore */ }
+  };
+
+  const handleSaveFollowUp = async () => {
+    setSavingFollowUp(true);
+    try {
+      const { data } = await api.patch(`/emails/${email._id}`, {
+        followUpDate: followUpDate ? new Date(followUpDate).toISOString() : null,
+        followUpNote
+      });
+      onUpdate(email._id, data);
+      flash('success', 'Follow-up reminder saved');
+    } finally { setSavingFollowUp(false); }
+  };
+
+  const handleClearFollowUp = async () => {
+    setFollowUpDate('');
+    setFollowUpNote('');
+    setSavingFollowUp(true);
+    try {
+      const { data } = await api.patch(`/emails/${email._id}`, { followUpDate: null, followUpNote: '' });
+      onUpdate(email._id, data);
+    } finally { setSavingFollowUp(false); }
+  };
+
+  const handleGenerateReply = async () => {
+    setGenReply(true);
+    try {
+      const { data } = await api.post('/emails/generate-reply', { subject: email.subject, body: email.body });
+      setReply(data.reply);
+    } catch (err) {
+      flash('error', err.response?.data?.error || 'Reply generation failed');
+    } finally { setGenReply(false); }
+  };
+
+  const handleSaveReply = async () => {
+    setSavingReply(true);
+    try {
+      const { data } = await api.patch(`/emails/${email._id}`, { replyDraft: reply });
+      onUpdate(email._id, data);
+      flash('success', 'Reply draft saved');
+    } catch { /* ignore */ }
+    finally { setSavingReply(false); }
+  };
+
+  const date = new Date(email.createdAt).toLocaleString('en-IN', {
+    day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+  });
+
+  return (
+    <div className="em-modal-backdrop" onClick={onClose}>
+      <div className="em-modal" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true">
+
+        {/* Header */}
+        <div className="em-modal-header">
+          <div className="em-modal-title-wrap">
+            <h3 className="em-modal-subject">{email.subject}</h3>
+            <div className="em-modal-meta">
+              {email.from && <span><i className="fas fa-user-circle"></i> {email.from}</span>}
+              <span><i className="fas fa-calendar-alt"></i> {date}</span>
+            </div>
+          </div>
+          <button className="em-modal-close" onClick={onClose} title="Close (Esc)">
+            <i className="fas fa-times"></i>
+          </button>
+        </div>
+
+        {/* Badges */}
+        <div className="em-modal-badges">
+          <PriorityBadge priority={email.priority} />
+          <CategoryBadge category={email.category} />
+          {(email.eligible === false || email.eligibilityReason) && <EligibilityBadge eligible={email.eligible} reason={email.eligibilityReason} />}
+          {email.requiresReply && <ReplyUrgencyBadge urgency={email.replyUrgency} />}
+          {email.deadline && <DeadlineBadge deadline={email.deadline} deadlineText={email.deadlineText} />}
+          {email.followUpDate && <FollowUpBadge followUpDate={email.followUpDate} />}
+        </div>
+
+        {/* Scrollable body */}
+        <div className="em-modal-body">
+
           {email.summary && (
             <div className="em-summary-box">
               <div className="em-summary-label"><i className="fas fa-robot"></i> AI Summary</div>
@@ -216,7 +377,6 @@ function EmailCard({ email, onStatusChange, onDelete, onUpdate }) {
             </div>
           )}
 
-          {/* Action Items */}
           {email.actionItems?.length > 0 && (
             <div className="em-action-items-box">
               <div className="em-summary-label" style={{ color: '#34d399' }}>
@@ -233,28 +393,43 @@ function EmailCard({ email, onStatusChange, onDelete, onUpdate }) {
             </div>
           )}
 
-          {/* Tags */}
           {email.tags?.length > 0 && (
             <div className="em-tags" style={{ marginTop: '0.6rem' }}>
               {email.tags.map((t, i) => <span key={i} className="em-tag">#{t}</span>)}
             </div>
           )}
 
-          {/* Full body */}
           <div className="em-body-text">
             <div className="em-body-label"><i className="fas fa-envelope-open"></i> Email Body</div>
             <pre className="em-body-pre">{email.body}</pre>
           </div>
 
-          {/* Reply draft */}
-          {email.replyDraft && (
-            <div className="em-reply-box">
-              <div className="em-summary-label"><i className="fas fa-reply"></i> Reply Draft</div>
-              <pre className="em-body-pre">{email.replyDraft}</pre>
+          {/* Reply generator */}
+          <div className="em-reply-box">
+            <div className="em-modal-section-head">
+              <span className="em-summary-label" style={{ margin: 0 }}><i className="fas fa-reply"></i> Reply</span>
+              <div style={{ display: 'flex', gap: '0.4rem' }}>
+                <button className="btn-secondary-sm" onClick={handleGenerateReply} disabled={genReply}>
+                  {genReply ? <><i className="fas fa-spinner fa-spin"></i> Drafting…</> : <><i className="fas fa-magic"></i> Generate</>}
+                </button>
+                {reply && (
+                  <button className="em-followup-save" onClick={handleSaveReply} disabled={savingReply}>
+                    {savingReply ? <i className="fas fa-spinner fa-spin"></i> : <><i className="fas fa-save"></i> Save draft</>}
+                  </button>
+                )}
+              </div>
             </div>
-          )}
+            <textarea
+              className="form-input chatbot-textarea"
+              rows={6}
+              value={reply}
+              onChange={e => setReply(e.target.value)}
+              placeholder="Generate an AI reply or write your own draft…"
+              style={{ marginTop: '0.5rem' }}
+            />
+          </div>
 
-          {/* Follow-up Tracker */}
+          {/* Follow-up tracker */}
           <div className="em-followup-section">
             <div className="em-followup-header">
               <span className="em-summary-label" style={{ color: '#a78bfa', margin: 0 }}>
@@ -267,337 +442,211 @@ function EmailCard({ email, onStatusChange, onDelete, onUpdate }) {
               )}
             </div>
             <div className="em-followup-fields">
+              <input type="date" className="em-followup-date" value={followUpDate} onChange={e => setFollowUpDate(e.target.value)} />
               <input
-                type="date"
-                className="em-followup-date"
-                value={followUpDate}
-                onChange={e => setFollowUpDate(e.target.value)}
-              />
-              <input
-                type="text"
-                className="em-followup-note"
-                value={followUpNote}
+                type="text" className="em-followup-note" value={followUpNote}
                 onChange={e => setFollowUpNote(e.target.value)}
                 placeholder="Note — e.g. 'Check if they replied'"
               />
-              <button
-                className="em-followup-save"
-                onClick={handleSaveFollowUp}
-                disabled={savingFollowUp || !followUpDate}
-              >
-                {savingFollowUp
-                  ? <i className="fas fa-spinner fa-spin"></i>
-                  : <><i className="fas fa-bell"></i> Set Reminder</>}
+              <button className="em-followup-save" onClick={handleSaveFollowUp} disabled={savingFollowUp || !followUpDate}>
+                {savingFollowUp ? <i className="fas fa-spinner fa-spin"></i> : <><i className="fas fa-bell"></i> Set Reminder</>}
               </button>
             </div>
           </div>
+        </div>
 
-          {/* Actions */}
-          <div className="em-card-actions">
-            <div className="em-status-btns">
-              {[
-                { val: 'unread',   icon: 'fa-circle',  label: 'Unread'   },
-                { val: 'read',     icon: 'fa-check',   label: 'Read'     },
-                { val: 'replied',  icon: 'fa-reply',   label: 'Replied'  },
-                { val: 'archived', icon: 'fa-archive', label: 'Archived' },
-              ].map(s => (
-                <button
-                  key={s.val}
-                  className={`em-status-btn${email.status === s.val ? ' active' : ''}`}
-                  onClick={(e) => { e.stopPropagation(); updateStatus(s.val); }}
-                  disabled={updating || email.status === s.val}
-                >
-                  <i className={`fas ${s.icon}`}></i> {s.label}
+        {/* Footer actions */}
+        <div className="em-modal-footer">
+          <div className="em-status-btns">
+            {[
+              { val: 'unread',   icon: 'fa-circle',  label: 'Unread'   },
+              { val: 'read',     icon: 'fa-check',   label: 'Read'     },
+              { val: 'replied',  icon: 'fa-reply',   label: 'Replied'  },
+              { val: 'archived', icon: 'fa-archive', label: 'Archived' },
+            ].map(s => (
+              <button
+                key={s.val}
+                className={`em-status-btn${email.status === s.val ? ' active' : ''}`}
+                onClick={() => updateStatus(s.val)}
+                disabled={updating || email.status === s.val}
+              >
+                <i className={`fas ${s.icon}`}></i> {s.label}
+              </button>
+            ))}
+          </div>
+          <div className="em-modal-footer-right">
+            <button className={`em-mark-btn${email.marked ? ' active' : ''}`} onClick={toggleMark}>
+              <i className={`${email.marked ? 'fas' : 'far'} fa-star`}></i> {email.marked ? 'Marked' : 'Mark important'}
+            </button>
+            {delConfirm ? (
+              <>
+                <button className="btn-danger-sm" onClick={handleDelete}>
+                  <i className="fas fa-check"></i> Confirm
                 </button>
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              {delConfirm ? (
-                <>
-                  <button className="btn-danger-sm" onClick={(e) => { e.stopPropagation(); handleDelete(); }}>
-                    <i className="fas fa-check"></i> Confirm
-                  </button>
-                  <button className="btn-secondary-sm" onClick={(e) => { e.stopPropagation(); setDelConfirm(false); }}>
-                    Cancel
-                  </button>
-                </>
-              ) : (
-                <button className="btn-danger-sm" onClick={(e) => { e.stopPropagation(); setDelConfirm(true); }}>
-                  <i className="fas fa-trash"></i> Delete
-                </button>
-              )}
-            </div>
+                <button className="btn-secondary-sm" onClick={() => setDelConfirm(false)}>Cancel</button>
+              </>
+            ) : (
+              <button className="btn-danger-sm" onClick={() => setDelConfirm(true)}>
+                <i className="fas fa-trash"></i> Delete
+              </button>
+            )}
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
 
-// ── ANALYZE TAB ──────────────────────────────────────────
+// ── IMPORTANT TAB ────────────────────────────────────────
+// Shows AI-flagged high-priority mail plus a short list of the nearest deadlines —
+// replaces the old manual paste-and-analyse tool (analysis now only ever runs
+// automatically against TNP mail during Gmail sync).
 
-function AnalyzeTab({ flash }) {
-  const [form, setForm]           = useState({ from: '', subject: '', body: '' });
-  const [analysis, setAnalysis]   = useState(null);
-  const [reply, setReply]         = useState('');
-  const [analyzing, setAnalyzing] = useState(false);
-  const [genReply, setGenReply]   = useState(false);
-  const [saving, setSaving]       = useState(false);
-  const [replyVisible, setReplyVisible] = useState(false);
+function ImportantTab({ flash }) {
+  const [emails, setEmails]       = useState([]);
+  const [deadlines, setDeadlines] = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [active, setActive]       = useState(null); // email open in modal
 
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-
-  const handleAnalyze = async (e) => {
-    e.preventDefault();
-    if (!form.subject.trim() || !form.body.trim()) return;
-    setAnalyzing(true);
-    setAnalysis(null);
-    setReply('');
-    setReplyVisible(false);
+  const load = async () => {
+    setLoading(true);
     try {
-      const { data } = await api.post('/emails/analyze', { subject: form.subject, body: form.body });
-      setAnalysis(data);
-    } catch (err) {
-      flash('error', err.response?.data?.error || 'Analysis failed');
+      // High-priority mail + anything the user manually starred (marked). Merge unique.
+      const [impRes, markRes, dlRes] = await Promise.all([
+        api.get('/emails?priority=high&direction=incoming'),
+        api.get('/emails?marked=true&direction=incoming'),
+        api.get('/emails/deadlines')
+      ]);
+      const map = new Map();
+      [...(impRes.data.emails || []), ...(markRes.data.emails || [])].forEach(e => map.set(e._id, e));
+      // Ineligible (wrong-branch) mail is demoted — don't surface it as "important" unless starred.
+      const merged = [...map.values()]
+        .filter(e => e.eligible !== false || e.marked)
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      setEmails(merged);
+
+      const now = Date.now();
+      // Only deadlines Vipul can actually act on (eligible) clutter-free.
+      const all = (dlRes.data || []).filter(e => e.eligible !== false);
+      const overdue = all
+        .filter(e => new Date(e.deadline).getTime() < now)
+        .sort((a, b) => new Date(b.deadline) - new Date(a.deadline));
+      const upcoming = all
+        .filter(e => new Date(e.deadline).getTime() >= now)
+        .sort((a, b) => new Date(a.deadline) - new Date(b.deadline));
+      // Limited list: at most 2 most-recently-overdue, filled out with the soonest upcoming, capped at 5.
+      setDeadlines([...overdue.slice(0, 2), ...upcoming].slice(0, 5));
+    } catch {
+      flash('error', 'Failed to load important mail');
     } finally {
-      setAnalyzing(false);
+      setLoading(false);
     }
   };
 
-  const handleGenerateReply = async () => {
-    setGenReply(true);
-    setReplyVisible(true);
+  useEffect(() => { load(); }, []);
+
+  const handleStatusChange = (id, status) => {
+    setEmails(prev => prev.map(e => e._id === id ? { ...e, status } : e));
+    setActive(prev => prev && prev._id === id ? { ...prev, status } : prev);
+  };
+  const handleDelete = (id) => { setEmails(prev => prev.filter(e => e._id !== id)); flash('success', 'Email deleted'); };
+  const handleUpdate = (id, updated) => {
+    setEmails(prev => prev.map(e => e._id === id ? updated : e));
+    setActive(prev => prev && prev._id === id ? updated : prev);
+  };
+  const toggleMark = async (email) => {
     try {
-      const { data } = await api.post('/emails/generate-reply', { subject: form.subject, body: form.body });
-      setReply(data.reply);
-    } catch (err) {
-      flash('error', err.response?.data?.error || 'Reply generation failed');
-    } finally {
-      setGenReply(false);
-    }
+      const { data } = await api.patch(`/emails/${email._id}`, { marked: !email.marked });
+      handleUpdate(email._id, data);
+    } catch { /* ignore */ }
   };
 
-  const handleSave = async () => {
-    setSaving(true);
+  // Deadline list items carry only partial data — fetch the full email for the popup.
+  const openFull = async (partial) => {
     try {
-      await api.post('/emails', {
-        from:         form.from,
-        subject:      form.subject,
-        body:         form.body,
-        summary:      analysis?.summary || '',
-        priority:     analysis?.priority || 'medium',
-        category:     analysis?.category || 'general',
-        replyDraft:   reply,
-        deadline:     analysis?.deadline || null,
-        deadlineText: analysis?.deadlineText || '',
-        tags:         analysis?.tags || [],
-        actionItems:  analysis?.actionItems || [],
-        requiresReply: analysis?.requiresReply || false,
-        replyUrgency:  analysis?.replyUrgency || 'none',
-        status:       'unread',
-        direction:    'incoming'
-      });
-      flash('success', 'Email saved to inbox');
-      setForm({ from: '', subject: '', body: '' });
-      setAnalysis(null);
-      setReply('');
-      setReplyVisible(false);
-    } catch (err) {
-      flash('error', err.response?.data?.error || 'Failed to save email');
-    } finally {
-      setSaving(false);
-    }
+      const { data } = await api.get(`/emails/${partial._id}`);
+      setActive(data);
+    } catch { setActive(partial); }
   };
+
+  if (loading) return <div className="loading-spinner"><div className="spinner"></div></div>;
+
+  const overdueCount = deadlines.filter(e => new Date(e.deadline).getTime() < Date.now()).length;
 
   return (
-    <div className="em-analyze-layout">
-      {/* Input Panel */}
-      <div className="em-analyze-left">
-        <div className="stat-card">
-          <h3 className="chatbot-section-title"><i className="fas fa-search"></i> Paste Email to Analyse</h3>
-          <form onSubmit={handleAnalyze}>
-            <div className="form-group">
-              <label>From (Sender)</label>
-              <input
-                type="text"
-                className="form-input"
-                placeholder="e.g. tnp@college.edu"
-                value={form.from}
-                onChange={e => set('from', e.target.value)}
-              />
-            </div>
-            <div className="form-group">
-              <label>Subject <span style={{ color: '#ef4444' }}>*</span></label>
-              <input
-                type="text"
-                className="form-input"
-                placeholder="Email subject line..."
-                value={form.subject}
-                onChange={e => set('subject', e.target.value)}
-                required
-              />
-            </div>
-            <div className="form-group">
-              <label>Email Body <span style={{ color: '#ef4444' }}>*</span></label>
-              <textarea
-                className="form-input chatbot-textarea"
-                rows={10}
-                placeholder="Paste the full email content here..."
-                value={form.body}
-                onChange={e => set('body', e.target.value)}
-                required
-              />
-            </div>
-            <button
-              type="submit"
-              className="btn-primary"
-              disabled={analyzing || !form.subject.trim() || !form.body.trim()}
-              style={{ width: '100%' }}
-            >
-              {analyzing
-                ? <><i className="fas fa-spinner fa-spin"></i> Analysing…</>
-                : <><i className="fas fa-magic"></i> Analyse Email</>}
-            </button>
-          </form>
+    <div className="chatbot-panel">
+      {/* Summary hero */}
+      <div className="em-important-hero">
+        <div className="em-important-hero-text">
+          <h3><i className="fas fa-star"></i> What needs your attention</h3>
+          <p>AI-flagged high-priority TNP mail and the nearest deadlines, all in one place.</p>
+        </div>
+        <div className="em-important-hero-stats">
+          <div className="em-hero-stat" style={{ '--hc': '#ef4444' }}>
+            <span className="em-hero-stat-num">{emails.length}</span>
+            <span className="em-hero-stat-label">Important</span>
+          </div>
+          <div className="em-hero-stat" style={{ '--hc': '#f59e0b' }}>
+            <span className="em-hero-stat-num">{deadlines.length}</span>
+            <span className="em-hero-stat-label">Deadlines</span>
+          </div>
+          <div className="em-hero-stat" style={{ '--hc': overdueCount > 0 ? '#ef4444' : '#22c55e' }}>
+            <span className="em-hero-stat-num">{overdueCount}</span>
+            <span className="em-hero-stat-label">Overdue</span>
+          </div>
         </div>
       </div>
 
-      {/* Results Panel */}
-      <div className="em-analyze-right">
-        {!analysis && !analyzing && (
-          <div className="em-empty-state">
-            <i className="fas fa-envelope-open-text"></i>
-            <p>Paste an email and click Analyse to get AI insights — summary, priority, category, action items, deadline extraction and reply urgency.</p>
+      <div className="stat-card" style={{ marginBottom: '1rem' }}>
+        <h3 className="chatbot-section-title">
+          <i className="fas fa-clock"></i> Upcoming Deadlines
+          {deadlines.length > 0 && <span className="chatbot-count">{deadlines.length}</span>}
+        </h3>
+        {deadlines.length === 0 ? (
+          <div className="chatbot-empty" style={{ padding: '1rem' }}>
+            <i className="fas fa-calendar-check"></i>
+            <p>No deadlines to show right now.</p>
           </div>
-        )}
-
-        {analyzing && (
-          <div className="em-empty-state">
-            <div className="spinner"></div>
-            <p>Analysing email with Gemini AI…</p>
-          </div>
-        )}
-
-        {analysis && !analyzing && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {/* Priority + Category + Reply urgency */}
-            <div className="stat-card">
-              <h3 className="chatbot-section-title" style={{ marginBottom: '1rem' }}>
-                <i className="fas fa-chart-bar"></i> Classification
-              </h3>
-              <div className="em-result-badges">
-                <div className="em-result-badge-group">
-                  <span className="em-result-label">Priority</span>
-                  <PriorityBadge priority={analysis.priority} />
-                </div>
-                <div className="em-result-badge-group">
-                  <span className="em-result-label">Category</span>
-                  <CategoryBadge category={analysis.category} />
-                </div>
-                {analysis.requiresReply && (
-                  <div className="em-result-badge-group">
-                    <span className="em-result-label">Reply</span>
-                    <ReplyUrgencyBadge urgency={analysis.replyUrgency} />
-                  </div>
-                )}
+        ) : (
+          <div className="em-deadline-list">
+            {deadlines.map(e => (
+              <div key={e._id} className="em-deadline-clickable" onClick={() => openFull(e)}>
+                <DeadlineItem email={e} />
               </div>
-
-              {analysis.deadline && (
-                <div className="em-deadline-row">
-                  <i className="fas fa-clock" style={{ color: '#f59e0b' }}></i>
-                  <DeadlineBadge deadline={analysis.deadline} deadlineText={analysis.deadlineText} />
-                </div>
-              )}
-
-              {analysis.tags?.length > 0 && (
-                <div className="em-tags" style={{ marginTop: '0.75rem' }}>
-                  {analysis.tags.map((t, i) => <span key={i} className="em-tag">#{t}</span>)}
-                </div>
-              )}
-            </div>
-
-            {/* Summary */}
-            <div className="stat-card">
-              <h3 className="chatbot-section-title" style={{ marginBottom: '0.75rem' }}>
-                <i className="fas fa-robot"></i> AI Summary
-              </h3>
-              <p style={{ lineHeight: 1.7, color: 'var(--text-primary)', margin: 0 }}>{analysis.summary}</p>
-            </div>
-
-            {/* Action Items */}
-            {analysis.actionItems?.length > 0 && (
-              <div className="stat-card">
-                <h3 className="chatbot-section-title" style={{ marginBottom: '0.75rem', color: '#34d399' }}>
-                  <i className="fas fa-tasks"></i> Action Items
-                </h3>
-                <ul className="em-action-list">
-                  {analysis.actionItems.map((item, i) => (
-                    <li key={i} className="em-action-item">
-                      <i className="fas fa-arrow-right"></i>
-                      <span>{item}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* Reply Generator */}
-            <div className="stat-card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                <h3 className="chatbot-section-title" style={{ margin: 0 }}>
-                  <i className="fas fa-reply"></i> Reply Generator
-                </h3>
-                <button
-                  className="btn-secondary"
-                  style={{ fontSize: '0.8rem', padding: '0.4rem 0.9rem' }}
-                  onClick={handleGenerateReply}
-                  disabled={genReply}
-                >
-                  {genReply
-                    ? <><i className="fas fa-spinner fa-spin"></i> Generating…</>
-                    : <><i className="fas fa-magic"></i> Generate Reply</>}
-                </button>
-              </div>
-
-              {replyVisible && (
-                <div>
-                  {genReply ? (
-                    <div style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-secondary)' }}>
-                      <i className="fas fa-spinner fa-spin"></i> Drafting reply…
-                    </div>
-                  ) : (
-                    <textarea
-                      className="form-input chatbot-textarea"
-                      rows={8}
-                      value={reply}
-                      onChange={e => setReply(e.target.value)}
-                      placeholder="Reply draft will appear here…"
-                    />
-                  )}
-                </div>
-              )}
-
-              {!replyVisible && !genReply && (
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: 0 }}>
-                  Click "Generate Reply" to draft a professional response using AI.
-                </p>
-              )}
-            </div>
-
-            {/* Save Button */}
-            <button
-              className="btn-primary"
-              style={{ width: '100%' }}
-              onClick={handleSave}
-              disabled={saving}
-            >
-              {saving
-                ? <><i className="fas fa-spinner fa-spin"></i> Saving…</>
-                : <><i className="fas fa-save"></i> Save to Inbox</>}
-            </button>
+            ))}
           </div>
         )}
       </div>
+
+      <div className="stat-card">
+        <h3 className="chatbot-section-title">
+          <i className="fas fa-star"></i> Important Mail
+          {emails.length > 0 && <span className="chatbot-count">{emails.length}</span>}
+        </h3>
+        {emails.length === 0 ? (
+          <div className="chatbot-empty" style={{ padding: '1rem' }}>
+            <i className="fas fa-inbox"></i>
+            <p>No important mail yet — high-priority TNP mail (and anything you star) shows up here.</p>
+          </div>
+        ) : (
+          <div className="em-email-list">
+            {emails.map(email => (
+              <EmailCard key={email._id} email={email} onOpen={setActive} onToggleMark={toggleMark} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {active && (
+        <EmailModal
+          email={active}
+          onClose={() => setActive(null)}
+          onStatusChange={handleStatusChange}
+          onUpdate={handleUpdate}
+          onDelete={handleDelete}
+          flash={flash}
+        />
+      )}
     </div>
   );
 }
@@ -620,6 +669,7 @@ function InboxTab({ flash }) {
   const [syncResult, setSyncResult] = useState(null);
   const [reanalyzing, setReanalyzing] = useState(false);
   const [autoStatus, setAutoStatus] = useState(null);
+  const [active, setActive]         = useState(null); // email open in modal
   const searchTimer = useRef(null);
 
   const loadAutoStatus = async () => {
@@ -689,6 +739,7 @@ function InboxTab({ flash }) {
 
   const handleStatusChange = (id, status) => {
     setEmails(prev => prev.map(e => e._id === id ? { ...e, status } : e));
+    setActive(prev => prev && prev._id === id ? { ...prev, status } : prev);
   };
 
   const handleDelete = (id) => {
@@ -699,6 +750,14 @@ function InboxTab({ flash }) {
 
   const handleUpdate = (id, updated) => {
     setEmails(prev => prev.map(e => e._id === id ? updated : e));
+    setActive(prev => prev && prev._id === id ? updated : prev);
+  };
+
+  const toggleMark = async (email) => {
+    try {
+      const { data } = await api.patch(`/emails/${email._id}`, { marked: !email.marked });
+      handleUpdate(email._id, data);
+    } catch { /* ignore */ }
   };
 
   const handleGmailSync = async () => {
@@ -708,7 +767,10 @@ function InboxTab({ flash }) {
       const { data } = await api.post('/emails/sync-gmail', { days: syncDays });
       setSyncResult(data);
       if (data.saved > 0) {
-        flash('success', `Synced ${data.saved} new email${data.saved !== 1 ? 's' : ''} from Gmail`);
+        const tnpNote = data.analyzed > 0
+          ? ` · ${data.analyzed} TNP mail AI-analysed`
+          : ' · no TNP mail to analyse';
+        flash('success', `Synced ${data.saved} new email${data.saved !== 1 ? 's' : ''}${tnpNote}`);
         load(1, filters);
       } else {
         flash('success', `All ${data.fetched} emails already in inbox — nothing new`);
@@ -791,7 +853,7 @@ function InboxTab({ flash }) {
           <div className="em-sync-title">
             <i className="fab fa-google" style={{ color: '#ea4335' }}></i>
             <span>Sync from Gmail</span>
-            <span className="em-sync-subtitle">Fetches emails, runs AI analysis, saves to inbox automatically</span>
+            <span className="em-sync-subtitle">Fetches all mail from Gmail — only TNP mail (from the placement cell) gets AI-analysed for priority & deadlines</span>
           </div>
           <div className="em-sync-controls">
             <button
@@ -836,11 +898,11 @@ function InboxTab({ flash }) {
               <i className="fas fa-arrow-right em-sync-arrow"></i>
               <span className="em-sync-step active"><i className="fas fa-download"></i> Fetching last {syncDays} days</span>
               <i className="fas fa-arrow-right em-sync-arrow"></i>
-              <span className="em-sync-step active"><i className="fas fa-robot"></i> AI analysing each email</span>
+              <span className="em-sync-step active"><i className="fas fa-robot"></i> AI analysing TNP mail only</span>
               <i className="fas fa-arrow-right em-sync-arrow"></i>
-              <span className="em-sync-step active"><i className="fas fa-database"></i> Saving to inbox</span>
+              <span className="em-sync-step active"><i className="fas fa-database"></i> Saving all to inbox</span>
             </div>
-            <p className="em-sync-note">This may take 30–90 seconds depending on email volume. Please wait…</p>
+            <p className="em-sync-note">Only mail from the placement cell (srawandale@gmail.com) is AI-analysed — the rest is fetched straight to your inbox.</p>
           </div>
         )}
 
@@ -852,7 +914,11 @@ function InboxTab({ flash }) {
             </div>
             <div className="em-sync-stat em-sync-stat-new">
               <span className="em-sync-stat-num">{syncResult.saved}</span>
-              <span className="em-sync-stat-label">New & Analysed</span>
+              <span className="em-sync-stat-label">New in Inbox</span>
+            </div>
+            <div className="em-sync-stat em-sync-stat-tnp">
+              <span className="em-sync-stat-num">{syncResult.analyzed ?? 0}</span>
+              <span className="em-sync-stat-label">TNP Analysed</span>
             </div>
             <div className="em-sync-stat">
               <span className="em-sync-stat-num">{syncResult.skipped}</span>
@@ -989,13 +1055,7 @@ function InboxTab({ flash }) {
           <>
             <div className="em-email-list">
               {emails.map(email => (
-                <EmailCard
-                  key={email._id}
-                  email={email}
-                  onStatusChange={handleStatusChange}
-                  onDelete={handleDelete}
-                  onUpdate={handleUpdate}
-                />
+                <EmailCard key={email._id} email={email} onOpen={setActive} onToggleMark={toggleMark} />
               ))}
             </div>
             {pages > 1 && (
@@ -1012,6 +1072,17 @@ function InboxTab({ flash }) {
           </>
         )}
       </div>
+
+      {active && (
+        <EmailModal
+          email={active}
+          onClose={() => setActive(null)}
+          onStatusChange={handleStatusChange}
+          onUpdate={handleUpdate}
+          onDelete={handleDelete}
+          flash={flash}
+        />
+      )}
     </div>
   );
 }
@@ -1121,6 +1192,7 @@ function DeadlinesTab({ flash }) {
   const [followUps, setFollowUps] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [tab, setTab]           = useState('deadlines');
+  const [active, setActive]     = useState(null);
 
   const load = async () => {
     setLoading(true);
@@ -1140,56 +1212,32 @@ function DeadlinesTab({ flash }) {
 
   useEffect(() => { load(); }, []);
 
+  // Silent refresh — refetch lists without the full-screen spinner (keeps the modal open)
+  const refresh = async () => {
+    try {
+      const [dlRes, fuRes] = await Promise.all([api.get('/emails/deadlines'), api.get('/emails/followups')]);
+      setEmails(dlRes.data);
+      setFollowUps(fuRes.data);
+    } catch { /* keep current data */ }
+  };
+
+  const openFull = async (partial) => {
+    try { const { data } = await api.get(`/emails/${partial._id}`); setActive(data); }
+    catch { setActive(partial); }
+  };
+  const handleStatusChange = (id, status) => setActive(prev => prev && prev._id === id ? { ...prev, status } : prev);
+  const handleUpdate = (id, updated) => {
+    setActive(prev => prev && prev._id === id ? updated : prev);
+    refresh();
+  };
+  const handleDelete = () => { setActive(null); refresh(); flash('success', 'Email deleted'); };
+
   const now = new Date();
   const overdue  = emails.filter(e => e.deadline && new Date(e.deadline) < now);
   const upcoming = emails.filter(e => e.deadline && new Date(e.deadline) >= now);
 
   const fuOverdue  = followUps.filter(e => e.followUpDate && new Date(e.followUpDate) < now);
   const fuUpcoming = followUps.filter(e => e.followUpDate && new Date(e.followUpDate) >= now);
-
-  const DeadlineItem = ({ email, dateField = 'deadline', textField = 'deadlineText' }) => {
-    const rawDate = email[dateField];
-    const days = deadlineDays(rawDate);
-    let urgency = 'safe';
-    if (days < 0) urgency = 'overdue';
-    else if (days <= 2) urgency = 'urgent';
-    else if (days <= 7) urgency = 'warning';
-
-    const colors = {
-      overdue: { border: '#ef444466', bg: 'rgba(239,68,68,0.05)', text: '#ef4444' },
-      urgent:  { border: '#ef444466', bg: 'rgba(239,68,68,0.05)', text: '#ef4444' },
-      warning: { border: '#f59e0b66', bg: 'rgba(245,158,11,0.05)', text: '#f59e0b' },
-      safe:    { border: '#22c55e44', bg: 'rgba(34,197,94,0.05)', text: '#22c55e' }
-    };
-    const c = colors[urgency];
-    const dateStr = new Date(rawDate).toLocaleDateString('en-IN', {
-      weekday: 'short', day: 'numeric', month: 'short', year: 'numeric'
-    });
-
-    return (
-      <div className="em-deadline-item" style={{ borderLeft: `3px solid ${c.border}`, background: c.bg }}>
-        <div className="em-deadline-left">
-          <div className="em-deadline-counter" style={{ color: c.text, background: `${c.text}18` }}>
-            {days < 0 ? `${Math.abs(days)}d ago` : days === 0 ? 'Today!' : `${days}d`}
-          </div>
-          <div>
-            <div className="em-deadline-subject">{email.subject}</div>
-            <div className="em-deadline-meta">
-              {email[textField] && <span><i className="fas fa-clock"></i> {email[textField]}</span>}
-              <span><i className="fas fa-calendar-alt"></i> {dateStr}</span>
-              {email.from && <span><i className="fas fa-user-circle"></i> {email.from}</span>}
-              {email.followUpNote && <span><i className="fas fa-sticky-note"></i> {email.followUpNote}</span>}
-            </div>
-          </div>
-        </div>
-        <div className="em-deadline-right">
-          <PriorityBadge priority={email.priority} />
-          <CategoryBadge category={email.category} />
-          {email.tags?.slice(0, 2).map((t, i) => <span key={i} className="em-tag">#{t}</span>)}
-        </div>
-      </div>
-    );
-  };
 
   if (loading) return <div className="loading-spinner"><div className="spinner"></div></div>;
 
@@ -1228,7 +1276,11 @@ function DeadlinesTab({ flash }) {
                   <span className="chatbot-count" style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444' }}>{overdue.length}</span>
                 </h3>
                 <div className="em-deadline-list">
-                  {overdue.map(e => <DeadlineItem key={e._id} email={e} />)}
+                  {overdue.map(e => (
+                    <div key={e._id} className="em-deadline-clickable" onClick={() => openFull(e)}>
+                      <DeadlineItem email={e} />
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
@@ -1239,7 +1291,11 @@ function DeadlinesTab({ flash }) {
                   <span className="chatbot-count">{upcoming.length}</span>
                 </h3>
                 <div className="em-deadline-list">
-                  {upcoming.map(e => <DeadlineItem key={e._id} email={e} />)}
+                  {upcoming.map(e => (
+                    <div key={e._id} className="em-deadline-clickable" onClick={() => openFull(e)}>
+                      <DeadlineItem email={e} />
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
@@ -1262,7 +1318,11 @@ function DeadlinesTab({ flash }) {
                   <span className="chatbot-count" style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>{fuOverdue.length}</span>
                 </h3>
                 <div className="em-deadline-list">
-                  {fuOverdue.map(e => <DeadlineItem key={e._id} email={e} dateField="followUpDate" textField="followUpNote" />)}
+                  {fuOverdue.map(e => (
+                    <div key={e._id} className="em-deadline-clickable" onClick={() => openFull(e)}>
+                      <DeadlineItem email={e} dateField="followUpDate" textField="followUpNote" />
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
@@ -1273,12 +1333,27 @@ function DeadlinesTab({ flash }) {
                   <span className="chatbot-count" style={{ background: 'rgba(167,139,250,0.15)', color: '#a78bfa' }}>{fuUpcoming.length}</span>
                 </h3>
                 <div className="em-deadline-list">
-                  {fuUpcoming.map(e => <DeadlineItem key={e._id} email={e} dateField="followUpDate" textField="followUpNote" />)}
+                  {fuUpcoming.map(e => (
+                    <div key={e._id} className="em-deadline-clickable" onClick={() => openFull(e)}>
+                      <DeadlineItem email={e} dateField="followUpDate" textField="followUpNote" />
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
           </>
         )
+      )}
+
+      {active && (
+        <EmailModal
+          email={active}
+          onClose={() => setActive(null)}
+          onStatusChange={handleStatusChange}
+          onUpdate={handleUpdate}
+          onDelete={handleDelete}
+          flash={flash}
+        />
       )}
     </div>
   );
@@ -1360,10 +1435,142 @@ function ComposeTab({ flash }) {
   );
 }
 
+// ── SETTINGS TAB ─────────────────────────────────────────
+
+function SettingsTab({ flash }) {
+  const [senders, setSenders]   = useState([]);
+  const [newSender, setNewSender] = useState('');
+  const [guidance, setGuidance] = useState('');
+  const [defaultGuidance, setDefaultGuidance] = useState('');
+  const [loading, setLoading]   = useState(true);
+  const [saving, setSaving]     = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get('/emails/config/settings');
+      setSenders(data.trustedSenders || []);
+      setGuidance(data.analysisGuidance || '');
+      setDefaultGuidance(data.defaultGuidance || '');
+    } catch {
+      flash('error', 'Failed to load settings');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const addSender = () => {
+    const s = newSender.trim().toLowerCase();
+    if (!s) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)) { flash('error', 'Enter a valid email address'); return; }
+    if (senders.includes(s)) { flash('error', 'That sender is already in the list'); return; }
+    setSenders(prev => [...prev, s]);
+    setNewSender('');
+  };
+
+  const removeSender = (s) => setSenders(prev => prev.filter(x => x !== s));
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const { data } = await api.put('/emails/config/settings', { trustedSenders: senders, analysisGuidance: guidance });
+      setSenders(data.trustedSenders || []);
+      setGuidance(data.analysisGuidance || '');
+      flash('success', 'Settings saved — applies to the next Gmail sync');
+    } catch (err) {
+      flash('error', err.response?.data?.error || 'Failed to save settings');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const resetGuidance = async () => {
+    setSaving(true);
+    try {
+      const { data } = await api.put('/emails/config/settings', { resetGuidance: true });
+      setGuidance(data.analysisGuidance || '');
+      flash('success', 'Analysis prompt reset to default');
+    } catch {
+      flash('error', 'Failed to reset prompt');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <div className="loading-spinner"><div className="spinner"></div></div>;
+
+  return (
+    <div className="chatbot-panel">
+      {/* Trusted senders */}
+      <div className="stat-card" style={{ marginBottom: '1rem' }}>
+        <h3 className="chatbot-section-title"><i className="fas fa-user-shield"></i> Trusted TNP Senders</h3>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.83rem', margin: '0 0 1rem' }}>
+          Only mail from these addresses is AI-analysed for priority, eligibility and deadlines. Everything else goes straight to your inbox untouched. Add a backup placement-cell address here anytime — no code change needed.
+        </p>
+
+        <div className="em-sender-list">
+          {senders.length === 0 ? (
+            <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>No senders — analysis is effectively off.</span>
+          ) : senders.map(s => (
+            <span key={s} className="em-sender-chip">
+              <i className="fas fa-envelope"></i> {s}
+              <button onClick={() => removeSender(s)} title="Remove"><i className="fas fa-times"></i></button>
+            </span>
+          ))}
+        </div>
+
+        <div className="em-sender-add">
+          <input
+            type="email"
+            className="form-input"
+            placeholder="add-another@college.edu"
+            value={newSender}
+            onChange={e => setNewSender(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addSender(); } }}
+          />
+          <button className="btn-secondary" onClick={addSender}><i className="fas fa-plus"></i> Add</button>
+        </div>
+      </div>
+
+      {/* Analysis prompt */}
+      <div className="stat-card">
+        <div className="em-modal-section-head" style={{ marginBottom: '0.5rem' }}>
+          <h3 className="chatbot-section-title" style={{ margin: 0 }}><i className="fas fa-robot"></i> AI Analysis Prompt</h3>
+          <button className="btn-secondary-sm" onClick={resetGuidance} disabled={saving} title="Restore the built-in default rules">
+            <i className="fas fa-undo"></i> Reset to default
+          </button>
+        </div>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.83rem', margin: '0 0 0.8rem' }}>
+          These are the rules Gemini follows when classifying TNP mail — priority, branch eligibility, categories and reply urgency. Your live skills &amp; education and the strict JSON output format are added automatically, so editing this can't break analysis.
+        </p>
+        <textarea
+          className="form-input chatbot-textarea"
+          rows={16}
+          value={guidance}
+          onChange={e => setGuidance(e.target.value)}
+          spellCheck={false}
+          style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.82rem', lineHeight: 1.6 }}
+        />
+        {defaultGuidance && guidance.trim() !== defaultGuidance.trim() && (
+          <p style={{ color: '#f59e0b', fontSize: '0.78rem', margin: '0.5rem 0 0' }}>
+            <i className="fas fa-pen"></i> Customised — differs from the default rules.
+          </p>
+        )}
+      </div>
+
+      <button className="btn-primary" style={{ width: '100%', marginTop: '1rem' }} onClick={save} disabled={saving}>
+        {saving ? <><i className="fas fa-spinner fa-spin"></i> Saving…</> : <><i className="fas fa-save"></i> Save Settings</>}
+      </button>
+    </div>
+  );
+}
+
 // ── MAIN COMPONENT ───────────────────────────────────────
 
 export default function EmailAnalyser() {
-  const [tab, setTab] = useState('analyze');
+  const [tab, setTab] = useState('important');
   const [msg, setMsg] = useState(null);
 
   const flash = (type, text) => {
@@ -1372,11 +1579,12 @@ export default function EmailAnalyser() {
   };
 
   const TABS = [
-    { id: 'analyze',   label: 'Analyse',   icon: 'fas fa-search' },
+    { id: 'important', label: 'Important', icon: 'fas fa-star' },
     { id: 'inbox',     label: 'Inbox',     icon: 'fas fa-inbox' },
     { id: 'digest',    label: 'Digest',    icon: 'fas fa-newspaper' },
     { id: 'deadlines', label: 'Deadlines', icon: 'fas fa-clock' },
-    { id: 'compose',   label: 'Compose',   icon: 'fas fa-paper-plane' }
+    { id: 'compose',   label: 'Compose',   icon: 'fas fa-paper-plane' },
+    { id: 'settings',  label: 'Settings',  icon: 'fas fa-cog' }
   ];
 
   return (
@@ -1400,11 +1608,12 @@ export default function EmailAnalyser() {
         ))}
       </div>
 
-      {tab === 'analyze'   && <AnalyzeTab flash={flash} />}
+      {tab === 'important' && <ImportantTab flash={flash} />}
       {tab === 'inbox'     && <InboxTab flash={flash} />}
       {tab === 'digest'    && <DigestTab flash={flash} />}
       {tab === 'deadlines' && <DeadlinesTab flash={flash} />}
       {tab === 'compose'   && <ComposeTab flash={flash} />}
+      {tab === 'settings'  && <SettingsTab flash={flash} />}
     </div>
   );
 }
