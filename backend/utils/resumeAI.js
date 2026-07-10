@@ -88,7 +88,9 @@ const SCHEMAS = {
     properties: {
       items: {
         type: 'array',
-        items: { type: 'object', properties: { variants: S.strArr }, required: ['variants'] }
+        // `source` is the provenance tag: the exact profile fact this bullet is
+        // grounded in. Optional so older flows stay valid, but the prompts ask for it.
+        items: { type: 'object', properties: { variants: S.strArr, source: S.str }, required: ['variants'] }
       }
     },
     required: ['items']
@@ -99,7 +101,7 @@ const SCHEMAS = {
       overview: S.str,
       items: {
         type: 'array',
-        items: { type: 'object', properties: { variants: S.strArr }, required: ['variants'] }
+        items: { type: 'object', properties: { variants: S.strArr, source: S.str }, required: ['variants'] }
       }
     },
     required: ['overview', 'items']
@@ -116,7 +118,7 @@ const SCHEMAS = {
             subheading: S.str,
             items: {
               type: 'array',
-              items: { type: 'object', properties: { variants: S.strArr }, required: ['variants'] }
+              items: { type: 'object', properties: { variants: S.strArr, source: S.str }, required: ['variants'] }
             }
           },
           required: ['heading', 'subheading', 'items']
@@ -153,6 +155,25 @@ const SCHEMAS = {
     type: 'object',
     properties: { content: S.str },
     required: ['content']
+  },
+  atsGap: {
+    type: 'object',
+    properties: {
+      gaps: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            keyword: S.str,
+            coverage: { type: 'string', enum: ['backed', 'partial', 'absent'] },
+            evidence: S.str,   // which real profile item could honestly carry it, or '' if none
+            suggestion: S.str  // one concrete, honest action
+          },
+          required: ['keyword', 'coverage', 'evidence', 'suggestion']
+        }
+      }
+    },
+    required: ['gaps']
   }
 };
 
@@ -272,6 +293,10 @@ Score every project. Higher = stronger match to the JD keywords, skills and resp
 
 const THREE_VARIANTS_RULE = 'For every bullet/line, provide EXACTLY 3 phrased variants (same fact, different wording — vary verbs, structure and keyword placement).';
 
+// Provenance: every bullet must cite the real profile fact it is grounded in, so
+// the UI can show a "backed by …" badge and the applicant can trust nothing was invented.
+const PROVENANCE_RULE = 'For EACH item also include a "source" string: a short (2-6 word) tag naming the exact profile fact this bullet is built from (e.g. "Project: SmartCart", "Skill: Kubernetes", "Achievement: SIH winner", "Experience: Intern @ Acme"). Never invent a source — if a bullet is a neutral rephrasing not tied to one fact, use "".';
+
 function sectionPrompt(sectionKey, rawData, companyResearch, jdParsed, preferences) {
   const base = `${contextBlock(companyResearch, jdParsed)}${preferenceBlock(preferences)}\n\n`;
 
@@ -304,8 +329,8 @@ Only use skills from the applicant's list — never add skills they don't have. 
 APPLICANT EXPERIENCE DATA (may be internships, roles, or project-based work):
 ${JSON.stringify(rawData, null, 1)}
 
-Return JSON: { "entries": [{ "heading": "role title", "subheading": "organization | start – end dates", "items": [{ "variants": ["v1", "v2", "v3"] }] }] }
-One entry per role, most recent first, 2-4 bullets each. Keep headings/dates factual — copy them from the data. Each bullet starts with a strong action verb, quantified only where the data supports it. ${THREE_VARIANTS_RULE}`;
+Return JSON: { "entries": [{ "heading": "role title", "subheading": "organization | start – end dates", "items": [{ "variants": ["v1", "v2", "v3"], "source": "Experience: role @ org" }] }] }
+One entry per role, most recent first, 2-4 bullets each. Keep headings/dates factual — copy them from the data. Each bullet starts with a strong action verb, quantified only where the data supports it. ${THREE_VARIANTS_RULE} ${PROVENANCE_RULE}`;
 
     case 'achievements':
       return `${base}Rewrite the applicant's achievements as sharp resume bullets relevant to this role.
@@ -313,8 +338,8 @@ One entry per role, most recent first, 2-4 bullets each. Keep headings/dates fac
 APPLICANT ACHIEVEMENTS:
 ${JSON.stringify(rawData, null, 1)}
 
-Return JSON: { "items": [{ "variants": ["v1", "v2", "v3"] }] }
-One bullet per achievement, most relevant first. ${THREE_VARIANTS_RULE}`;
+Return JSON: { "items": [{ "variants": ["v1", "v2", "v3"], "source": "Achievement: <title>" }] }
+One bullet per achievement, most relevant first. ${THREE_VARIANTS_RULE} ${PROVENANCE_RULE}`;
 
     case 'education':
       return `${base}Format the applicant's education for the resume.
@@ -331,12 +356,12 @@ One line per education entry: degree, institution, years, score. Keep factual �
 PROJECT:
 ${JSON.stringify(rawData, null, 1)}
 
-Return JSON: { "overview": "one clear sentence", "items": [ {"variants":["v1","v2","v3"]}, {"variants":["v1","v2","v3"]}, {"variants":["v1","v2","v3"]} ] }
+Return JSON: { "overview": "one clear sentence", "items": [ {"variants":["v1","v2","v3"],"source":"Project: <title>"}, {"variants":["v1","v2","v3"],"source":"Project: <title>"}, {"variants":["v1","v2","v3"],"source":"Project: <title>"} ] }
 Rules:
 - "overview": ONE recruiter-friendly NOUN-PHRASE description (14-22 words) of what the project IS and the problem it solves. It must NOT start with a verb like "Developed"/"Built" — write it like "An AI-powered platform that…" or "A full-stack MERN application for…". This is a neutral description, not an achievement.
 - EXACTLY 3 bullets (items) — never fewer, never more.
 - Each bullet is a complete, easy-to-understand sentence of 18-28 words that STARTS WITH A STRONG ACTION VERB describing YOUR specific contribution. Do NOT restate the overview. The three bullets cover DISTINCT aspects: (1) a core technical implementation you built, (2) a second distinct feature or integration, (3) the impact, result, or scale.
-- Weave in matching ATS keywords honestly; never invent metrics. ${THREE_VARIANTS_RULE}`;
+- Weave in matching ATS keywords honestly; never invent metrics. ${THREE_VARIANTS_RULE} ${PROVENANCE_RULE}`;
 
     default:
       throw new Error(`Unknown section: ${sectionKey}`);
@@ -362,7 +387,7 @@ ${extraInstruction ? `4. SPECIFIC INSTRUCTION (highest priority): ${extraInstruc
 CURRENT SECTION JSON:
 ${JSON.stringify(sectionJson, null, 1)}
 
-Return the improved section as JSON with the IDENTICAL structure and the same number of items/variants. Do not add or invent facts.`;
+Return the improved section as JSON with the IDENTICAL structure and the same number of items/variants. Preserve each item's "source" provenance tag exactly as given. Do not add or invent facts.`;
 
   return callGeminiJSON(prompt, { systemInstruction: SYSTEM_PROMPT, temperature: 0.4, responseSchema: refineSchemaFor(sectionKey) });
 }
@@ -426,6 +451,37 @@ Return at most 8 suggestions, most important first. If the resume is clean, retu
   return Array.isArray(out.suggestions) ? out.suggestions : [];
 }
 
+// ---------- ATS gap analysis (explainable, grounded in the applicant's real evidence) ----------
+
+// For each JD keyword missing from the resume, decide — using ONLY retrieved profile
+// evidence — whether the applicant could honestly claim it and how. Never fabricates.
+async function atsGapAnalysis(missingKeywords, evidenceChunks, jdParsed) {
+  const evidenceText = (evidenceChunks || [])
+    .map((e, i) => `[${i + 1}] ${e.title}\n${e.text}`)
+    .join('\n\n') || '(no profile evidence retrieved)';
+
+  const prompt = `An applicant's resume is missing these ATS keywords the target job scans for:
+${missingKeywords.map(k => `- ${k}`).join('\n')}
+
+Below is the RETRIEVED EVIDENCE from the applicant's real profile (projects, experience, skills, achievements). This is the ONLY truth you may use — never invent experience the applicant does not have.
+
+APPLICANT EVIDENCE:
+${evidenceText}
+
+${jdParsed ? `ROLE CONTEXT: ${jdParsed.roleSummary || ''} (seniority: ${jdParsed.seniorityLevel || 'n/a'})` : ''}
+
+For each missing keyword decide honestly:
+- "backed": the evidence clearly shows the applicant has this — name the exact item in "evidence" and suggest where to surface the keyword.
+- "partial": adjacent/related evidence exists — name it in "evidence" and suggest an honest way to phrase the connection (no overclaiming).
+- "absent": no supporting evidence — set "evidence" to "" and suggest a concrete learning/experience step to genuinely acquire it. Do NOT suggest adding it to the resume.
+
+Return JSON: { "gaps": [{ "keyword": "...", "coverage": "backed|partial|absent", "evidence": "profile item or ''", "suggestion": "one concrete honest action" }] }
+Cover every missing keyword, most addressable (backed) first.`;
+
+  const out = await callGeminiJSON(prompt, { systemInstruction: SYSTEM_PROMPT, temperature: 0.2, responseSchema: SCHEMAS.atsGap });
+  return Array.isArray(out.gaps) ? out.gaps : [];
+}
+
 module.exports = {
   summarizeCompanyResearch,
   parseJobDescription,
@@ -434,5 +490,6 @@ module.exports = {
   refineSection,
   regenerateBullet,
   coherenceCheck,
-  generateCoverLetter
+  generateCoverLetter,
+  atsGapAnalysis
 };

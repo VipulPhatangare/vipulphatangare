@@ -6,6 +6,7 @@ const Email   = require('../models/Email');
 const EmailAgentConfig = require('../models/EmailAgentConfig');
 const { analyzeEmail, generateReply, generateDigest, isTrustedSender, getCandidateContext, getEmailAgentConfig } = require('../utils/emailAnalyzer');
 const { fetchGmailEmails } = require('../utils/gmailFetcher');
+const { syncJobPostingFromEmail } = require('../utils/jobPostingSync');
 const emailScheduler = require('../utils/emailScheduler');
 
 // ── NODEMAILER TRANSPORTER ───────────────────────────────
@@ -107,7 +108,7 @@ router.post('/bulk-reanalyze', auth, async (req, res) => {
     for (const email of emails) {
       try {
         const analysis = await analyzeEmail(email.subject, email.body, { candidateContext, guidance: config.analysisGuidance });
-        await Email.findByIdAndUpdate(email._id, {
+        const updated = await Email.findByIdAndUpdate(email._id, {
           summary:      analysis.summary,
           priority:     analysis.priority,
           category:     analysis.category,
@@ -119,7 +120,10 @@ router.post('/bulk-reanalyze', auth, async (req, res) => {
           actionItems:  analysis.actionItems,
           requiresReply: analysis.requiresReply,
           replyUrgency:  analysis.replyUrgency
-        });
+        }, { new: true });
+        // findByIdAndUpdate bypasses the save hook, so stage the JobPosting here —
+        // reanalyze is where a mail's category can newly become 'tnp'.
+        if (updated) await syncJobPostingFromEmail(updated).catch(() => {});
         reanalyzed++;
         await new Promise(r => setTimeout(r, 350));
       } catch { /* skip individual failures */ }

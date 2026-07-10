@@ -19,6 +19,7 @@ const Experience = require('../models/Experience');
 const { searchCompany } = require('../utils/searchProvider');
 const resumeAI = require('../utils/resumeAI');
 const { exportResume } = require('../utils/resumeRenderer');
+const knowledgeBase = require('../utils/knowledgeBase');
 
 router.use(authMiddleware);
 
@@ -117,7 +118,7 @@ async function getJdParsed(jdText, jdHash) {
 
 const toItems = out => (out.items || []).map(it => {
   const variants = (it.variants || []).map(v => String(v).trim()).filter(Boolean).slice(0, 3);
-  return { text: variants[0] || '', variants, selectedVariant: 0, matchScore: null };
+  return { text: variants[0] || '', variants, selectedVariant: 0, matchScore: null, source: String(it.source || '').trim() };
 });
 
 const toEntries = out => (out.entries || []).map(e => ({
@@ -273,15 +274,43 @@ router.post('/:id/rank-projects', async (req, res) => {
     const projects = await Project.find({ isVisible: true }).sort({ order: 1 }).lean();
     if (!projects.length) return res.status(400).json({ error: 'No projects found in the portfolio DB.' });
 
+    // RAG: make sure the applicant's knowledge base is embedded, then compute a
+    // semantic similarity score per project against the JD to blend with the LLM's.
+    const jp = resume.jdParsed || {};
+    const jdQuery = [
+      resume.roleTitle,
+      jp.roleSummary,
+      (jp.requiredSkills || []).join(', '),
+      (jp.responsibilities || []).join('. '),
+      (jp.atsKeywords || []).join(', ')
+    ].filter(Boolean).join('\n');
+
+    let semanticById = new Map();
+    try {
+      await knowledgeBase.ensureIndexed();
+      semanticById = await knowledgeBase.projectSimilarityScores(jdQuery);
+    } catch (err) {
+      console.warn('[resumeAgent] RAG semantic scoring unavailable:', err.message);
+    }
+
     const rankings = await resumeAI.rankProjects(projects, resume.jdParsed);
     const byId = new Map(rankings.map(r => [String(r.projectId), r]));
 
     resume.projectRanking = projects.map(p => {
       const r = byId.get(String(p._id));
+      const llmScore = Math.max(0, Math.min(100, Number(r?.score) || 0));
+      const semanticScore = semanticById.has(String(p._id)) ? semanticById.get(String(p._id)) : null;
+      // Blend when we have both signals (LLM reasons about fit, RAG grounds it in
+      // semantic closeness); otherwise fall back to whichever exists.
+      const score = semanticScore != null
+        ? Math.round(0.6 * llmScore + 0.4 * semanticScore)
+        : llmScore;
       return {
         projectId: p._id,
         title: p.title,
-        score: Math.max(0, Math.min(100, Number(r?.score) || 0)),
+        score,
+        llmScore,
+        semanticScore,
         reasoning: r?.reasoning || '',
         selected: false
       };
@@ -439,11 +468,11 @@ router.post('/:id/refine/:section', async (req, res) => {
     } else if (sectionKey === 'summary') {
       current = { variants: section.items?.[0]?.variants?.length ? section.items[0].variants : [section.content] };
     } else if (sectionKey === 'experience') {
-      current = { entries: (section.entries || []).map(e => ({ heading: e.heading, subheading: e.subheading, items: (e.items || []).map(i => ({ variants: i.variants })) })) };
+      current = { entries: (section.entries || []).map(e => ({ heading: e.heading, subheading: e.subheading, items: (e.items || []).map(i => ({ variants: i.variants, source: i.source || '' })) })) };
     } else if (sectionKey === 'project') {
-      current = { overview: section.overview || '', items: (section.items || []).map(i => ({ variants: i.variants })) };
+      current = { overview: section.overview || '', items: (section.items || []).map(i => ({ variants: i.variants, source: i.source || '' })) };
     } else {
-      current = { items: (section.items || []).map(i => ({ variants: i.variants })) };
+      current = { items: (section.items || []).map(i => ({ variants: i.variants, source: i.source || '' })) };
     }
 
     const refined = await resumeAI.refineSection(sectionKey, current, resume.companyResearch, resume.jdParsed, resume.preferences, (req.body.instruction || '').slice(0, 500));
@@ -470,9 +499,14 @@ router.post('/:id/refine/:section', async (req, res) => {
     } else if (sectionKey === 'experience') {
       if (Array.isArray(refined.entries)) set[`${base}.entries`] = toEntries(refined);
     } else if (Array.isArray(refined.items)) {
-      // keep matchScores where item counts line up
+      // keep matchScores and provenance where item counts line up
       const fresh = toItems(refined);
-      fresh.forEach((it, i) => { if (section.items?.[i]) it.matchScore = section.items[i].matchScore; });
+      fresh.forEach((it, i) => {
+        if (section.items?.[i]) {
+          it.matchScore = section.items[i].matchScore;
+          if (!it.source) it.source = section.items[i].source || '';
+        }
+      });
       set[`${base}.items`] = fresh;
       if (sectionKey === 'project' && refined.overview) set[`${base}.overview`] = String(refined.overview).trim();
     }
@@ -591,6 +625,72 @@ router.post('/:id/coherence-check', async (req, res) => {
     res.json({ suggestions });
   } catch (err) {
     console.error('[resumeAgent] coherence:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------- RAG knowledge base: (re)build the applicant's embedding memory ----------
+
+router.post('/reindex', async (req, res) => {
+  try {
+    const summary = await knowledgeBase.reindexAll();
+    res.json({ message: 'Knowledge base reindexed.', ...summary });
+  } catch (err) {
+    console.error('[resumeAgent] reindex:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------- explainable ATS gap report ----------
+
+// Flatten the assembled resume to plain text so we can string-match JD keywords.
+function assembledResumeText(resume) {
+  const vis = items => (items || []).filter(i => i.isVisible !== false);
+  const parts = [resume.sections.summary?.content || ''];
+  ['achievements', 'education'].forEach(k => vis(resume.sections[k]?.items).forEach(i => parts.push(i.text)));
+  (resume.sections.experience?.entries || []).filter(e => e.isVisible !== false).forEach(e => {
+    parts.push(e.heading, e.subheading);
+    vis(e.items).forEach(i => parts.push(i.text));
+  });
+  (resume.sections.skills?.matched || []).forEach(s => parts.push(s.name));
+  (resume.sections.skills?.additional || []).forEach(s => parts.push(s.name));
+  (resume.sections.projects || []).filter(p => p.isVisible).forEach(p => {
+    parts.push(p.title, (p.techStack || []).join(' '));
+    vis(p.items).forEach(i => parts.push(i.text));
+  });
+  return parts.filter(Boolean).join(' ').toLowerCase();
+}
+
+router.post('/:id/ats-gap', async (req, res) => {
+  try {
+    const resume = await Resume.findById(req.params.id).lean();
+    if (!resume) return res.status(404).json({ error: 'Resume not found.' });
+
+    const keywords = resume.jdParsed?.atsKeywords || [];
+    if (!keywords.length) return res.json({ covered: [], missing: [], gaps: [], pct: 0 });
+
+    const text = assembledResumeText(resume);
+    const covered = [], missing = [];
+    keywords.forEach(kw => (text.includes(String(kw).toLowerCase()) ? covered : missing).push(kw));
+    const pct = Math.round((covered.length / keywords.length) * 100);
+
+    let gaps = [];
+    if (missing.length) {
+      // RAG: pull the applicant's most relevant real evidence for the missing keywords,
+      // then let the model map each keyword to honest evidence (or flag it absent).
+      let evidence = [];
+      try {
+        await knowledgeBase.ensureIndexed();
+        evidence = await knowledgeBase.retrieve(missing.join(', '), { k: 8 });
+      } catch (err) {
+        console.warn('[resumeAgent] ats-gap retrieval failed:', err.message);
+      }
+      gaps = await resumeAI.atsGapAnalysis(missing, evidence, resume.jdParsed);
+    }
+
+    res.json({ covered, missing, pct, gaps });
+  } catch (err) {
+    console.error('[resumeAgent] ats-gap:', err);
     res.status(500).json({ error: err.message });
   }
 });

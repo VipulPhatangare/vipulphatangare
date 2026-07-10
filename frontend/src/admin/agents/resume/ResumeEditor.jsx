@@ -1,6 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
+import api from '../../../api/axios.js';
 import ResumePreview from './ResumePreview.jsx';
 import SettingsModal from './SettingsModal.jsx';
+import RefineModal from './RefineModal.jsx';
+import PreviewModal from './PreviewModal.jsx';
 
 const SECTION_META = [
   { key: 'summary', label: 'Summary', icon: 'fa-align-left' },
@@ -43,11 +46,51 @@ function computeAtsCoverage(resume) {
   return { covered, missing, pct: Math.round((covered.length / keywords.length) * 100) };
 }
 
-function AtsGauge({ resume }) {
+const GAP_META = {
+  backed:  { icon: 'fa-circle-check',        label: 'You have this',   cls: 'gap-backed' },
+  partial: { icon: 'fa-circle-half-stroke',  label: 'Related evidence',cls: 'gap-partial' },
+  absent:  { icon: 'fa-circle-xmark',        label: 'Not in profile',  cls: 'gap-absent' },
+};
+
+function AtsGauge({ resume, onApplyGap }) {
   const [open, setOpen] = useState(false);
+  const [gaps, setGaps] = useState(null);
+  const [explaining, setExplaining] = useState(false);
+  const [gapErr, setGapErr] = useState('');
+  const [applyingIdx, setApplyingIdx] = useState(null);
   const cov = computeAtsCoverage(resume);
   if (!cov) return null;
   const level = cov.pct >= 75 ? 'high' : cov.pct >= 45 ? 'medium' : 'low';
+
+  // Auto-apply: hand the gap to the parent (which refines the named projects and
+  // adds the skill), then drop the row so the report reflects the fix.
+  const applyOne = async (g, i) => {
+    setApplyingIdx(i);
+    try {
+      await onApplyGap(g);
+      setGaps(gs => gs.filter((_, j) => j !== i));
+    } catch (err) {
+      setGapErr(err.response?.data?.error || err.message);
+    } finally {
+      setApplyingIdx(null);
+    }
+  };
+
+  // AI-backed gap analysis: maps each missing keyword to the applicant's real
+  // evidence (RAG) so suggestions stay honest — never "just add this keyword".
+  const explainGaps = async () => {
+    setExplaining(true);
+    setGapErr('');
+    try {
+      const { data } = await api.post(`/resume-agent/${resume._id}/ats-gap`);
+      setGaps(data.gaps || []);
+    } catch (err) {
+      setGapErr(err.response?.data?.error || err.message);
+    } finally {
+      setExplaining(false);
+    }
+  };
+
   return (
     <div className="ra-ats-panel">
       <button className="ra-ats-summary" onClick={() => setOpen(o => !o)}>
@@ -60,14 +103,81 @@ function AtsGauge({ resume }) {
         <div className="ra-ats-detail">
           {cov.missing.length > 0 && (
             <div className="ra-skill-group">
-              <h5><i className="fas fa-circle-exclamation"></i> Missing from resume</h5>
+              <div className="ra-ats-gap-head">
+                <h5><i className="fas fa-circle-exclamation"></i> Missing from resume</h5>
+                <button className="ra-secondary-btn ra-explain-btn" onClick={explainGaps} disabled={explaining}
+                  title="Analyse each gap against your real profile evidence">
+                  <i className={`fas ${explaining ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'}`}></i> Explain gaps
+                </button>
+              </div>
               <div className="ra-chip-row">{cov.missing.map((k, i) => <span key={i} className="ra-chip ra-chip-missing">{k}</span>)}</div>
+              {gapErr && <p className="ra-muted ra-gap-err">{gapErr}</p>}
+              {gaps && (
+                <div className="ra-gap-list">
+                  {gaps.length === 0 && <p className="ra-muted">No actionable gaps found.</p>}
+                  {gaps.map((g, i) => {
+                    const m = GAP_META[g.coverage] || GAP_META.absent;
+                    const actionable = g.coverage !== 'absent';
+                    return (
+                      <div key={i} className={`ra-gap-row ${m.cls}`}>
+                        <span className="ra-gap-kw"><i className={`fas ${m.icon}`}></i> {g.keyword}</span>
+                        <span className="ra-gap-tag">{m.label}</span>
+                        <span className="ra-gap-msg">
+                          {g.evidence && <em>Backed by: {g.evidence}. </em>}
+                          {g.suggestion}
+                        </span>
+                        {actionable ? (
+                          <button className="ra-apply-btn ra-gap-apply" disabled={applyingIdx !== null}
+                            onClick={() => applyOne(g, i)}
+                            title="Rewrite the backing projects to work this keyword in (truthfully)">
+                            {applyingIdx === i
+                              ? <i className="fas fa-spinner fa-spin"></i>
+                              : <><i className="fas fa-wand-magic-sparkles"></i> Apply</>}
+                          </button>
+                        ) : <span className="ra-gap-learn"><i className="fas fa-graduation-cap"></i> learn</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
           <div className="ra-skill-group">
             <h5><i className="fas fa-circle-check"></i> Covered</h5>
             <div className="ra-chip-row">{cov.covered.map((k, i) => <span key={i} className="ra-chip ra-chip-covered">{k}</span>)}</div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Feature 2: make the live company research visible so the applicant can see WHY
+// the AI phrased things the way it did (recent news, culture, tech stack all feed tailoring).
+function ResearchPanel({ resume }) {
+  const [open, setOpen] = useState(false);
+  const r = resume.companyResearch;
+  if (!r || typeof r !== 'object') return null;
+  const rows = [
+    ['Industry', r.industry],
+    ['Tech stack', (r.techStack || []).join(', ')],
+    ['Products', (r.products || []).join(', ')],
+    ['Culture', r.culture],
+    ['Recent news', (r.recentNews || []).join(' • ')],
+  ].filter(([, v]) => v && String(v).trim());
+  if (!rows.length) return null;
+  return (
+    <div className="ra-research-panel">
+      <button className="ra-ats-summary" onClick={() => setOpen(o => !o)}>
+        <span className="ra-research-badge"><i className="fas fa-magnifying-glass-chart"></i></span>
+        <span className="ra-ats-label">Company research applied to {resume.company} — shapes summary, keywords & cover letter</span>
+        <i className={`fas fa-chevron-${open ? 'up' : 'down'}`}></i>
+      </button>
+      {open && (
+        <div className="ra-ats-detail ra-research-detail">
+          {rows.map(([k, v]) => (
+            <div key={k} className="ra-research-row"><strong>{k}:</strong> <span>{v}</span></div>
+          ))}
         </div>
       )}
     </div>
@@ -118,13 +228,20 @@ function BulletRow({ item, onEdit, onCycle, onRegen, onToggleHide, onMove, first
       </span>
       <div className="ra-bullet-main">
         <EditableText value={item.text} onCommit={onEdit} />
-        {total > 1 && (
-          <div className="ra-variant-switch">
-            <button onClick={() => onCycle(-1)} title="Previous phrasing"><i className="fas fa-chevron-left"></i></button>
-            <span>{(item.selectedVariant ?? 0) + 1}/{total}</span>
-            <button onClick={() => onCycle(1)} title="Next phrasing"><i className="fas fa-chevron-right"></i></button>
-          </div>
-        )}
+        <div className="ra-bullet-meta">
+          {item.source && (
+            <span className="ra-source-badge" title="This claim is grounded in your real profile data — not invented">
+              <i className="fas fa-link"></i> {item.source}
+            </span>
+          )}
+          {total > 1 && (
+            <div className="ra-variant-switch">
+              <button onClick={() => onCycle(-1)} title="Previous phrasing"><i className="fas fa-chevron-left"></i></button>
+              <span>{(item.selectedVariant ?? 0) + 1}/{total}</span>
+              <button onClick={() => onCycle(1)} title="Next phrasing"><i className="fas fa-chevron-right"></i></button>
+            </div>
+          )}
+        </div>
       </div>
       <button className="ra-icon-btn" onClick={onToggleHide} title={hidden ? 'Show on resume' : 'Hide from resume'}>
         <i className={`fas ${hidden ? 'fa-eye-slash' : 'fa-eye'}`}></i>
@@ -160,6 +277,71 @@ export default function ResumeEditor({
   const [applying, setApplying] = useState(null); // index of suggestion being applied
   const [showAddProject, setShowAddProject] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [reindexing, setReindexing] = useState(false);
+  const [reindexMsg, setReindexMsg] = useState('');
+  const [refineTarget, setRefineTarget] = useState(null); // { key, projectId, label }
+  const [refineBusy, setRefineBusy] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+
+  // Refine popup Apply — runs the existing refine with the typed instruction,
+  // then closes. onRefineSection swallows its own errors, so this always resolves.
+  const runRefine = async (instruction) => {
+    if (!refineTarget) return;
+    setRefineBusy(true);
+    try {
+      await onRefineSection(refineTarget.key, refineTarget.projectId, instruction);
+      setRefineTarget(null);
+    } finally {
+      setRefineBusy(false);
+    }
+  };
+
+  // Auto-apply an ATS gap: the gap's evidence names the backing projects, so we
+  // refine exactly those to weave the keyword in (truthfully), and — when the
+  // suggestion calls for it — also surface the keyword as a skill.
+  const applyGap = async (gap) => {
+    const projects = resume.sections.projects || [];
+    const evidence = gap.evidence || '';
+    const matched = projects.filter(p => p.title && evidence.includes(p.title));
+    const instruction = `Weave the keyword "${gap.keyword}" into this section wherever it is truthful and supported by the actual work. ${gap.suggestion}`;
+
+    const jobs = matched.map(p => onRefineSection('project', String(p.projectId), instruction));
+
+    // Only add as a skill when the suggestion explicitly asks for it (avoids turning
+    // phrases like "business process automation" into odd skill chips).
+    if (/\bskill\b/i.test(gap.suggestion)) {
+      mutate(r => {
+        const all = [...(r.sections.skills.matched || []), ...(r.sections.skills.additional || [])];
+        if (!all.some(s => s.name.toLowerCase() === gap.keyword.toLowerCase())) {
+          r.sections.skills.additional.push({ name: gap.keyword, relevance: 'medium' });
+          r.sections.skills.manuallyEdited = true;
+        }
+      });
+    }
+
+    // Nothing concrete to target — fold the keyword into the summary instead.
+    if (!matched.length && !/\bskill\b/i.test(gap.suggestion)) {
+      jobs.push(onRefineSection('summary', null, instruction));
+    }
+
+    await Promise.allSettled(jobs);
+  };
+
+  // Rebuild the RAG "project memory" from the current profile data (projects,
+  // experience, skills…). Embeds only changed items, so it's cheap to re-run.
+  const rebuildMemory = async () => {
+    setReindexing(true);
+    setReindexMsg('');
+    try {
+      const { data } = await api.post('/resume-agent/reindex');
+      setReindexMsg(`Memory updated — ${data.embedded} embedded, ${data.unchanged} unchanged${data.pruned ? `, ${data.pruned} pruned` : ''}.`);
+    } catch (err) {
+      setReindexMsg(err.response?.data?.error || err.message);
+    } finally {
+      setReindexing(false);
+      setTimeout(() => setReindexMsg(''), 6000);
+    }
+  };
 
   // Ranked projects not currently on the resume — candidates for "+ Add project"
   const currentProjectIds = new Set((resume.sections.projects || []).map(p => String(p.projectId)));
@@ -331,7 +513,9 @@ export default function ResumeEditor({
                   title={p.items?.length ? 'Regenerate bullets' : 'Generate bullets'}>
                   <i className={`fas ${busy[busyKey] ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'}`}></i>
                 </button>
-                <button className="ra-icon-btn" disabled={!p.items?.length || !!busy[busyKey]} onClick={() => onRefineSection('project', pid)} title="Refine (ATS polish pass)">
+                <button className="ra-icon-btn" disabled={!p.items?.length || !!busy[busyKey]}
+                  onClick={() => setRefineTarget({ key: 'project', projectId: pid, label: p.title })}
+                  title="Refine — repolish with your own instruction">
                   <i className="fas fa-broom"></i>
                 </button>
                 <button className="ra-icon-btn" onClick={() => toggleVisible('project', pid)} title={p.isVisible ? 'Hide from resume' : 'Show on resume'}>
@@ -453,6 +637,10 @@ export default function ResumeEditor({
           <button className="ra-secondary-btn" onClick={onCoherenceCheck} disabled={checkingCoherence || nothingGenerated}>
             <i className={`fas ${checkingCoherence ? 'fa-spinner fa-spin' : 'fa-list-check'}`}></i> Coherence check
           </button>
+          <button className="ra-secondary-btn" onClick={rebuildMemory} disabled={reindexing}
+            title="Re-embed your projects, experience & skills into the agent's RAG memory">
+            <i className={`fas ${reindexing ? 'fa-spinner fa-spin' : 'fa-brain'}`}></i> Rebuild memory
+          </button>
           <button className="ra-secondary-btn" onClick={onUndo} disabled={!canUndo} title="Undo (Ctrl+Z)">
             <i className="fas fa-rotate-left"></i> Undo
           </button>
@@ -476,7 +664,14 @@ export default function ResumeEditor({
             onClose={() => setShowSettings(false)} />
         )}
 
-        <AtsGauge resume={resume} />
+        {refineTarget && (
+          <RefineModal title={refineTarget.label} busy={refineBusy}
+            onApply={runRefine} onCancel={() => setRefineTarget(null)} />
+        )}
+
+        {reindexMsg && <div className="ra-reindex-msg"><i className="fas fa-brain"></i> {reindexMsg}</div>}
+        <ResearchPanel resume={resume} />
+        <AtsGauge resume={resume} onApplyGap={applyGap} />
 
         {coherence?.length > 0 && (
           <div className="ra-coherence-panel">
@@ -510,8 +705,9 @@ export default function ResumeEditor({
                       title="Generate (draft + refine)">
                       <i className={`fas ${busy[key] ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'}`}></i>
                     </button>
-                    <button className="ra-icon-btn" disabled={!!busy[key]} onClick={() => onRefineSection(key)}
-                      title="Refine — re-polish for ATS keywords, bullet strength, conciseness">
+                    <button className="ra-icon-btn" disabled={!!busy[key]}
+                      onClick={() => setRefineTarget({ key, projectId: null, label })}
+                      title="Refine — repolish with your own instruction">
                       <i className="fas fa-broom"></i>
                     </button>
                     <button className="ra-icon-btn" onClick={() => toggleVisible(key)}
@@ -528,9 +724,19 @@ export default function ResumeEditor({
       </div>
 
       <div className="ra-editor-preview">
-        <div className="ra-preview-label"><i className="fas fa-eye"></i> Live preview</div>
+        <div className="ra-preview-label">
+          <span><i className="fas fa-eye"></i> Live preview</span>
+          <button className="ra-secondary-btn ra-preview-expand" onClick={() => setShowPreview(true)}
+            title="Open a larger preview">
+            <i className="fas fa-up-right-and-down-left-from-center"></i> Enlarge
+          </button>
+        </div>
         <ResumePreview resume={resume} profile={profile} />
       </div>
+
+      {showPreview && (
+        <PreviewModal resume={resume} profile={profile} onClose={() => setShowPreview(false)} />
+      )}
     </div>
   );
 }

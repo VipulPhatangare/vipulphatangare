@@ -6,6 +6,7 @@ const itemSchema = new mongoose.Schema({
   variants: [{ type: String }],                     // 3 AI phrasings
   selectedVariant: { type: Number, default: 0 },
   matchScore: { type: Number, default: null },
+  source: { type: String, default: '' },            // provenance: the profile fact this bullet is grounded in
   isVisible: { type: Boolean, default: true }       // per-bullet show/hide
 }, { _id: false });
 
@@ -57,7 +58,9 @@ const projectSectionSchema = new mongoose.Schema({
 const rankingSchema = new mongoose.Schema({
   projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project' },
   title: { type: String, default: '' },
-  score: { type: Number, default: 0 },
+  score: { type: Number, default: 0 },          // blended final score (LLM + RAG semantic)
+  llmScore: { type: Number, default: null },    // Gemini's JD-match judgement
+  semanticScore: { type: Number, default: null },// RAG cosine similarity (project embedding vs JD)
   reasoning: { type: String, default: '' },
   selected: { type: Boolean, default: false }
 }, { _id: false });
