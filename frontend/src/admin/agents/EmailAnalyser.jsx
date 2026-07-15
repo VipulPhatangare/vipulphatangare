@@ -3,46 +3,6 @@ import api from '../../api/axios.js';
 
 // ── HELPERS ─────────────────────────────────────────────
 
-// Returns the first Google Form link found in an email body, or null.
-// Mirrors backend/utils/linkExtractor so the Apply button only shows when the
-// server would actually stage a posting.
-// Gmail often rewrites links as https://www.google.com/url?q=<encoded>&...
-// Unwrap that so the real form URL surfaces.
-function unwrapGoogleRedirect(u) {
-  try {
-    const url = new URL(u);
-    if (/(^|\.)google\.com$/i.test(url.hostname) && url.pathname === '/url') {
-      const q = url.searchParams.get('q');
-      if (q) return q;
-    }
-  } catch { /* not a URL */ }
-  return u;
-}
-
-function detectFormLink(text) {
-  if (!text) return null;
-  const urls = text.match(/https?:\/\/[^\s"'<>)\]}]+/gi) || [];
-  for (const raw of urls) {
-    const u = unwrapGoogleRedirect(raw.replace(/[.,;:!?)]+$/, ''));
-    if (/(?:docs\.google\.com\/forms\/|forms\.gle\/)/i.test(u)) return u;
-  }
-  return null;
-}
-
-// Friendly labels + icons for parsed Google Form question types.
-const QTYPE_META = {
-  short_text:      { label: 'Short answer', icon: 'fa-i-cursor' },
-  paragraph:       { label: 'Paragraph',    icon: 'fa-align-left' },
-  multiple_choice: { label: 'Multiple choice', icon: 'fa-circle-dot' },
-  dropdown:        { label: 'Dropdown',     icon: 'fa-caret-down' },
-  checkboxes:      { label: 'Checkboxes',   icon: 'fa-square-check' },
-  linear_scale:    { label: 'Linear scale', icon: 'fa-sliders' },
-  grid:            { label: 'Grid',         icon: 'fa-table-cells' },
-  date:            { label: 'Date',         icon: 'fa-calendar' },
-  time:            { label: 'Time',         icon: 'fa-clock' },
-  file_upload:     { label: 'File upload',  icon: 'fa-paperclip' }
-};
-
 const PRIORITY_META = {
   high:   { label: 'High',   color: '#ef4444', bg: 'rgba(239,68,68,0.12)',   icon: 'fas fa-fire' },
   medium: { label: 'Medium', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)',  icon: 'fas fa-minus-circle' },
@@ -296,44 +256,6 @@ export function EmailModal({ email, onClose, onStatusChange, onUpdate, onDelete,
   const [reply, setReply]           = useState(email.replyDraft || '');
   const [genReply, setGenReply]     = useState(false);
   const [savingReply, setSavingReply] = useState(false);
-  const [applying, setApplying]     = useState(false);
-  const [posting, setPosting]       = useState(null);
-  const [previewing, setPreviewing] = useState(false);
-  const [questions, setQuestions]   = useState(null);
-  const [previewErr, setPreviewErr] = useState('');
-
-  // A Google Form link in the body means this mail can be auto-applied to.
-  const formLink = detectFormLink(email.body);
-
-  const handleApply = async () => {
-    setApplying(true);
-    try {
-      const { data } = await api.post(`/jobpostings/from-email/${email._id}`);
-      setPosting(data);
-      flash('success', 'Staged for Auto-Apply. The form filler will pick it up in the Auto-Apply tab.');
-    } catch (err) {
-      flash('error', err.response?.data?.error || 'Could not stage this form.');
-    } finally { setApplying(false); }
-  };
-
-  // Parse the form's questions (read-only). Uses the stored posting when staged so
-  // the schema persists; otherwise previews straight from the detected link.
-  const handlePreview = async () => {
-    setPreviewing(true);
-    setPreviewErr('');
-    try {
-      const res = posting
-        ? await api.post(`/jobpostings/${posting._id}/extract`)
-        : await api.post('/jobpostings/extract-preview', { formUrl: formLink });
-      const qs = res.data.questions || [];
-      setQuestions(qs);
-      if (posting) setPosting(res.data);
-      if (qs.length === 0) setPreviewErr('No questions could be read from this form.');
-    } catch (err) {
-      // Keep the reason visible inline (a toast disappears too fast to act on).
-      setPreviewErr(err.response?.data?.error || 'Could not read the form.');
-    } finally { setPreviewing(false); }
-  };
 
   // Mark unread → read on open
   useEffect(() => {
@@ -481,88 +403,6 @@ export function EmailModal({ email, onClose, onStatusChange, onUpdate, onDelete,
             <div className="em-body-label"><i className="fas fa-envelope-open"></i> Email Body</div>
             <pre className="em-body-pre">{email.body}</pre>
           </div>
-
-          {/* Auto-Apply — shown only when a Google Form link is present */}
-          {formLink && (
-            <div className="em-apply-box">
-              <div className="em-modal-section-head">
-                <span className="em-summary-label" style={{ margin: 0, color: '#38bdf8' }}>
-                  <i className="fas fa-wand-magic-sparkles"></i> Auto-Apply
-                </span>
-                <a className="em-apply-link" href={formLink} target="_blank" rel="noreferrer" title={formLink}>
-                  <i className="fas fa-up-right-from-square"></i> Open form
-                </a>
-              </div>
-              <p className="em-apply-hint">
-                A Google Form was detected in this mail. Staging it queues it for the review-and-fill
-                step — nothing is submitted without your confirmation.
-              </p>
-              <div className="em-apply-actions">
-                <button
-                  className="btn-primary-sm em-apply-btn"
-                  onClick={handleApply}
-                  disabled={applying || (posting && posting.status !== 'new')}
-                >
-                  {applying
-                    ? <><i className="fas fa-spinner fa-spin"></i> Staging…</>
-                    : posting
-                      ? <><i className="fas fa-check"></i> Staged for Auto-Apply</>
-                      : <><i className="fas fa-paper-plane"></i> Apply</>}
-                </button>
-                <button className="btn-secondary-sm" onClick={handlePreview} disabled={previewing}>
-                  {previewing
-                    ? <><i className="fas fa-spinner fa-spin"></i> Reading form…</>
-                    : <><i className="fas fa-list-check"></i> Preview questions</>}
-                </button>
-              </div>
-
-              {previewErr && (
-                <div className="em-form-preview-err">
-                  <i className="fas fa-triangle-exclamation"></i>
-                  <div>
-                    <div>{previewErr}</div>
-                    {/(sign-in|restricted)/i.test(previewErr) && (
-                      <div className="em-form-preview-err-hint">
-                        This form is locked to a Google Workspace domain, so its questions aren't public.
-                        It can still be filled later through the signed-in browser step (Phase 4).
-                      </div>
-                    )}
-                    <code className="em-form-preview-url">{formLink}</code>
-                  </div>
-                </div>
-              )}
-
-              {questions && questions.length > 0 && (
-                <div className="em-form-preview">
-                  <div className="em-form-preview-head">
-                    <i className="fas fa-file-lines"></i> {questions.length} question{questions.length > 1 ? 's' : ''} detected
-                  </div>
-                  <ol className="em-form-qlist">
-                    {questions.map((q, i) => {
-                      const meta = QTYPE_META[q.type] || { label: q.type, icon: 'fa-circle-question' };
-                      return (
-                        <li key={i} className="em-form-q">
-                          <div className="em-form-q-top">
-                            <span className="em-form-q-text">
-                              {q.text || <em>(untitled)</em>}
-                              {q.required && <span className="em-form-q-req" title="Required">*</span>}
-                            </span>
-                            <span className="em-form-q-type"><i className={`fas ${meta.icon}`}></i> {meta.label}</span>
-                          </div>
-                          {q.options?.length > 0 && (
-                            <div className="em-form-q-opts">
-                              {q.options.slice(0, 6).map((o, j) => <span key={j} className="em-form-q-opt">{o}</span>)}
-                              {q.options.length > 6 && <span className="em-form-q-opt">+{q.options.length - 6} more</span>}
-                            </div>
-                          )}
-                        </li>
-                      );
-                    })}
-                  </ol>
-                </div>
-              )}
-            </div>
-          )}
 
           {/* Reply generator */}
           <div className="em-reply-box">

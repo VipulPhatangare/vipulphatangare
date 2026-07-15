@@ -18,8 +18,10 @@ const Experience = require('../models/Experience');
 
 const { searchCompany } = require('../utils/searchProvider');
 const resumeAI = require('../utils/resumeAI');
-const { exportResume } = require('../utils/resumeRenderer');
+const { exportResume, renderResumePdfBuffer } = require('../utils/resumeRenderer');
 const knowledgeBase = require('../utils/knowledgeBase');
+const { runAtsParseCheck } = require('../utils/atsParser');
+const { PDFParse } = require('pdf-parse');
 
 router.use(authMiddleware);
 
@@ -691,6 +693,40 @@ router.post('/:id/ats-gap', async (req, res) => {
     res.json({ covered, missing, pct, gaps });
   } catch (err) {
     console.error('[resumeAgent] ats-gap:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------- real ATS parse test (deterministic, no LLM) ----------
+
+// Renders the resume to the exact PDF an ATS would receive, extracts its text
+// layer, and runs the mechanical parse checks (sections, contact, dates, reading
+// order, keyword extractability, glyphs) plus a simulated autofill preview.
+router.post('/:id/ats-parse-check', async (req, res) => {
+  try {
+    const resume = await Resume.findById(req.params.id).lean();
+    if (!resume) return res.status(404).json({ error: 'Resume not found.' });
+    const profile = await Profile.findOne().lean() || {};
+
+    let pdfText = '';
+    try {
+      const buffer = await renderResumePdfBuffer(resume, profile);
+      const parser = new PDFParse({ data: buffer });
+      try {
+        const data = await parser.getText();
+        pdfText = (data.text || '').trim();
+      } finally {
+        await parser.destroy();
+      }
+    } catch (err) {
+      console.error('[resumeAgent] ats-parse-check render/extract failed:', err.message);
+      return res.status(502).json({ error: `Could not render or read the resume PDF: ${err.message}` });
+    }
+
+    const report = runAtsParseCheck({ pdfText, resume, profile });
+    res.json(report);
+  } catch (err) {
+    console.error('[resumeAgent] ats-parse-check:', err);
     res.status(500).json({ error: err.message });
   }
 });

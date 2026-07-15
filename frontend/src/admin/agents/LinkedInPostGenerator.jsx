@@ -172,6 +172,12 @@ export default function LinkedInPostGenerator() {
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [savingConfig, setSavingConfig] = useState(false);
 
+  // Knowledge base (bio + retroactive sync of saved posts)
+  const [bio, setBio] = useState('');
+  const [savingBio, setSavingBio] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState(null);
+
   const [msg, setMsg] = useState(null);
 
   const flash = (type, text) => {
@@ -181,6 +187,7 @@ export default function LinkedInPostGenerator() {
 
   useEffect(() => { loadConfig(); }, []);
   useEffect(() => { if (tab === 'history') loadPosts(1); }, [tab]);
+  useEffect(() => { if (tab === 'settings' && !bio) loadBio(); }, [tab]);
 
   // Auto-assemble editor when selections change
   useEffect(() => {
@@ -215,6 +222,41 @@ export default function LinkedInPostGenerator() {
       flash('error', 'Failed to save config');
     } finally {
       setSavingConfig(false);
+    }
+  };
+
+  const loadBio = async () => {
+    try {
+      const { data } = await api.get('/profile');
+      setBio(data.bio || '');
+    } catch { /* non-fatal — bio just stays empty */ }
+  };
+
+  const saveBio = async () => {
+    setSavingBio(true);
+    try {
+      await api.put('/profile', { bio });
+      flash('success', 'Bio saved — run "Sync knowledge base" to feed it to the agent');
+    } catch {
+      flash('error', 'Failed to save bio');
+    } finally {
+      setSavingBio(false);
+    }
+  };
+
+  // Retroactively index the bio + every saved post into the agent's knowledge
+  // base so generations stop being blind to past posts and the bio.
+  const syncKnowledge = async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const { data } = await api.post('/agents/linkedin/sync-knowledge');
+      setSyncResult(data);
+      flash('success', `Synced ${data.posts} post(s)${data.bioIndexed ? ' + bio' : ''} into the knowledge base`);
+    } catch (err) {
+      flash('error', err.response?.data?.error || 'Failed to sync knowledge base');
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -754,6 +796,42 @@ export default function LinkedInPostGenerator() {
       {/* ── SETTINGS ── */}
       {tab === 'settings' && (
         <div className="chatbot-panel">
+          {/* Knowledge base — what the agent actually knows about you */}
+          <div className="chatbot-config-form stat-card" style={{ marginBottom: '1.25rem' }}>
+            <h3 className="chatbot-section-title"><i className="fas fa-brain"></i> Knowledge Base</h3>
+            <p className="form-hint" style={{ marginTop: '-0.5rem', marginBottom: '1rem' }}>
+              The agent grounds every post in this knowledge base. Your bio and your saved posts are indexed here so
+              generations know your background and past content — not just the chunks you added in the chatbot.
+            </p>
+
+            <div className="form-group">
+              <label>Professional Bio / About</label>
+              <textarea
+                className="form-input chatbot-textarea"
+                rows={6}
+                placeholder="Write your professional bio / about-me here. This grounds the tone and facts of generated posts."
+                value={bio}
+                onChange={e => setBio(e.target.value)}
+              />
+              <span className="form-hint">Saved to your profile, then indexed on the next sync.</span>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              <button type="button" className="btn-secondary" onClick={saveBio} disabled={savingBio}>
+                <i className="fas fa-save"></i> {savingBio ? 'Saving…' : 'Save Bio'}
+              </button>
+              <button type="button" className="btn-primary" onClick={syncKnowledge} disabled={syncing}>
+                <i className={`fas ${syncing ? 'fa-spinner fa-spin' : 'fa-rotate'}`}></i>
+                {syncing ? ' Syncing…' : ' Sync knowledge base'}
+              </button>
+              {syncResult && (
+                <span className="form-hint" style={{ margin: 0 }}>
+                  Indexed {syncResult.posts}/{syncResult.totalPosts} saved post(s){syncResult.bioIndexed ? ' + bio' : ''} · {syncResult.chunks} chunks
+                </span>
+              )}
+            </div>
+          </div>
+
           {loadingConfig ? (
             <div className="loading-spinner"><div className="spinner"></div></div>
           ) : (

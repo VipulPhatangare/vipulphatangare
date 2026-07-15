@@ -7,6 +7,8 @@ const { generateComponents, regenerateSection } = require('../utils/linkedinGene
 const { fetchUrlMeta } = require('../utils/urlFetcher');
 const LinkedInPost = require('../models/LinkedInPost');
 const LinkedInAgentConfig = require('../models/LinkedInAgentConfig');
+const ChatbotChunk = require('../models/ChatbotChunk');
+const { indexLinkedInPost, syncLinkedInKnowledge } = require('../utils/linkedinKnowledge');
 
 const HASHTAG_SPEC = '- "hashtags": array of 20 to 25 hashtag words (strings, no # prefix, no duplicates) — mix of post-specific niche hashtags AND broad high-reach viral LinkedIn hashtags (e.g. innovation, technology, ai, careers, programming)';
 
@@ -54,6 +56,17 @@ router.put('/linkedin/config', auth, async (req, res) => {
     await config.save();
     res.json(config);
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── SYNC KNOWLEDGE (retroactively index bio + all saved posts) ──────────────
+router.post('/linkedin/sync-knowledge', auth, async (req, res) => {
+  try {
+    const result = await syncLinkedInKnowledge();
+    res.json(result);
+  } catch (err) {
+    console.error('[agents] sync-knowledge failed:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -113,6 +126,13 @@ router.post('/linkedin/save', auth, async (req, res) => {
       finalPost:  finalPost || '',
       isFavorite: Boolean(isFavorite)
     });
+
+    // Teach the agent from this post immediately: embed it into the knowledge
+    // store so future generations know the user's past content and voice.
+    // Best-effort — a failed embed must never break the save.
+    indexLinkedInPost(post).catch(err =>
+      console.warn('[agents] auto-index saved post failed:', err.message));
+
     res.json({ post });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -151,6 +171,8 @@ router.get('/linkedin/posts', auth, async (req, res) => {
 router.delete('/linkedin/posts/:id', auth, async (req, res) => {
   try {
     await LinkedInPost.findByIdAndDelete(req.params.id);
+    // Drop this post's knowledge chunks too so retrieval never surfaces a deleted post.
+    await ChatbotChunk.deleteMany({ source: 'linkedin', sourceLabel: `LinkedIn post ${req.params.id}` });
     res.json({ message: 'Post deleted' });
   } catch (err) {
     res.status(500).json({ error: err.message });

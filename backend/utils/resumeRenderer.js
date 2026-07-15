@@ -332,4 +332,10 @@ async function exportResume(resume, profile, format, kind = 'resume') {
   return `resumes/${filename}`;
 }
 
-module.exports = { exportResume, buildHtml };
+// Render the resume to a PDF Buffer in memory (no file written). Used by the ATS
+// parse checker, which needs the exact bytes a real ATS would receive.
+async function renderResumePdfBuffer(resume, profile) {
+  return renderPdf(buildHtml(resume, profile));
+}
+
+module.exports = { exportResume, buildHtml, renderPdf, renderResumePdfBuffer };

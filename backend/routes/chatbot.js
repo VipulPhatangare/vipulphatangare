@@ -2,7 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const router = express.Router();
 const multer = require('multer');
-const pdfParse = require('pdf-parse');
+const { PDFParse } = require('pdf-parse');
 const auth = require('../middleware/auth');
 const ChatbotChunk = require('../models/ChatbotChunk');
 const ChatbotConfig = require('../models/ChatbotConfig');
@@ -161,8 +161,14 @@ router.post('/chunks/pdf', auth, upload.single('pdf'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'PDF file required' });
 
-    const data = await pdfParse(req.file.buffer);
-    const text = data.text?.trim();
+    const parser = new PDFParse({ data: req.file.buffer });
+    let text;
+    try {
+      const data = await parser.getText();
+      text = data.text?.trim();
+    } finally {
+      await parser.destroy();
+    }
     if (!text) return res.status(400).json({ error: 'Could not extract text from PDF' });
 
     const chunks = chunkText(text);

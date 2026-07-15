@@ -5,6 +5,9 @@ const profileSchema = new mongoose.Schema({
   title: { type: String, default: 'AI/ML Engineer' },
   subtitle: { type: String, default: 'Aspiring AI/ML Engineer' },
   tagline: { type: String, default: '' },
+  // Long-form professional bio / "about me". Also indexed into the agent knowledge
+  // base so the LinkedIn + chatbot agents can ground content in it. See linkedinKnowledge.js
+  bio: { type: String, default: '' },
   githubUrl: { type: String, default: '' },
   linkedinUrl: { type: String, default: '' },
   instagramUrl: { type: String, default: '' },

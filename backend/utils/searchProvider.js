@@ -36,28 +36,49 @@ async function searchWithTavily(query) {
   return results;
 }
 
+// Drop duplicate hits that appear across more than one query angle, so the same
+// article isn't summarized twice (wastes Gemini tokens). Keyed by link, falling
+// back to a normalized title when a result carries no link (e.g. Tavily summary).
+function dedupeResults(results) {
+  const seen = new Set();
+  const out = [];
+  for (const r of results) {
+    const key = (r.link && r.link.trim())
+      ? r.link.trim().toLowerCase().replace(/[?#].*$/, '')
+      : `title:${(r.title || '').trim().toLowerCase()}`;
+    if (!key || key === 'title:') continue;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(r);
+  }
+  return out;
+}
+
 // Returns [{ title, snippet, link }] across a few company-research angles
 async function searchCompany(companyName) {
   const provider = (process.env.SEARCH_PROVIDER || 'tavily').toLowerCase();
   const search = provider === 'serpapi' ? searchWithSerpApi : searchWithTavily;
 
+  // Current year keeps the "recent news" angle from silently going stale each Jan.
+  const year = new Date().getFullYear();
   const queries = [
     `${companyName} company overview industry products`,
     `${companyName} technology stack engineering culture`,
-    `${companyName} recent news 2026`
+    `${companyName} recent news ${year}`
   ];
 
   const settled = await Promise.allSettled(queries.map(q => search(q)));
-  const results = [];
+  const collected = [];
   for (const s of settled) {
-    if (s.status === 'fulfilled') results.push(...s.value);
+    if (s.status === 'fulfilled') collected.push(...s.value);
     else console.warn('[searchProvider]', provider, 'query failed:', s.reason?.message);
   }
-  if (!results.length) {
+  if (!collected.length) {
     const errors = settled.filter(s => s.status === 'rejected').map(s => s.reason?.message).join('; ');
     throw new Error(`Company search returned no results (${provider}): ${errors || 'empty responses'}`);
   }
-  console.log(`[searchProvider] ${provider}: ${results.length} results for "${companyName}"`);
+  const results = dedupeResults(collected);
+  console.log(`[searchProvider] ${provider}: ${results.length} unique results (${collected.length} raw) for "${companyName}"`);
   return { provider, results };
 }
 

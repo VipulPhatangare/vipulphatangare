@@ -152,6 +152,102 @@ function AtsGauge({ resume, onApplyGap }) {
   );
 }
 
+const PARSE_STATUS_META = {
+  pass: { icon: 'fa-circle-check',        cls: 'ats-pass' },
+  warn: { icon: 'fa-triangle-exclamation',cls: 'ats-warn' },
+  fail: { icon: 'fa-circle-xmark',        cls: 'ats-fail' },
+};
+
+// Real ATS parse test — renders the resume to the exact PDF an ATS receives,
+// extracts its text, and mechanically verifies sections/contact/dates/order/etc.
+// Independent from the LLM keyword gauge above: this proves the data survives
+// PDF extraction. Runs on demand (a PDF render takes ~1-2s), no LLM cost.
+function AtsParsePanel({ resume }) {
+  const [open, setOpen] = useState(false);
+  const [report, setReport] = useState(null);
+  const [running, setRunning] = useState(false);
+  const [err, setErr] = useState('');
+
+  const run = async () => {
+    setRunning(true);
+    setErr('');
+    try {
+      const { data } = await api.post(`/resume-agent/${resume._id}/ats-parse-check`);
+      setReport(data);
+      setOpen(true);
+    } catch (e) {
+      setErr(e.response?.data?.error || e.message);
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const level = report?.level || 'medium';
+
+  return (
+    <div className="ra-ats-panel">
+      <button className="ra-ats-summary" onClick={() => (report ? setOpen(o => !o) : run())} disabled={running}>
+        <span className={`ra-score-badge ra-score-${level}`}>
+          {running ? <i className="fas fa-spinner fa-spin" /> : report ? `${report.score}%` : <i className="fas fa-vial" />}
+        </span>
+        <span className="ra-ats-label">
+          {report
+            ? `ATS parse test — ${report.counts.pass} passed, ${report.counts.warn} warnings, ${report.counts.fail} failed`
+            : 'Run real ATS parse test — simulate how Workday / Greenhouse read your PDF'}
+        </span>
+        {report && <i className={`fas fa-chevron-${open ? 'up' : 'down'}`}></i>}
+      </button>
+      {err && <p className="ra-muted ra-gap-err" style={{ padding: '0 1rem 0.8rem' }}>{err}</p>}
+      {report && open && (
+        <div className="ra-ats-detail">
+          <div className="ra-parse-checks">
+            {report.checks.map(c => {
+              const m = PARSE_STATUS_META[c.status] || PARSE_STATUS_META.warn;
+              return (
+                <div key={c.id} className={`ra-parse-row ${m.cls}`}>
+                  <span className="ra-parse-icon"><i className={`fas ${m.icon}`}></i></span>
+                  <div className="ra-parse-body">
+                    <span className="ra-parse-label">{c.label}</span>
+                    <span className="ra-parse-detail">{c.detail}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="ra-skill-group ra-autofill">
+            <h5><i className="fas fa-wand-magic-sparkles"></i> Simulated autofill — what an ATS would extract</h5>
+            <div className="ra-autofill-grid">
+              {[
+                ['Name', report.autofill.name],
+                ['Email', report.autofill.email],
+                ['Phone', report.autofill.phone],
+                ['Location', report.autofill.location],
+                ['Most recent role', report.autofill.mostRecentRole],
+                ['Education', report.autofill.education],
+                ['LinkedIn', report.autofill.linkedin],
+                ['GitHub', report.autofill.github],
+              ].map(([k, v]) => (
+                <div key={k} className="ra-autofill-row">
+                  <span className="ra-autofill-key">{k}</span>
+                  <span className={`ra-autofill-val${v ? '' : ' empty'}`}>{v || '— not detected —'}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <button className="ra-secondary-btn" onClick={run} disabled={running} style={{ alignSelf: 'flex-start' }}>
+            <i className={`fas ${running ? 'fa-spinner fa-spin' : 'fa-rotate'}`}></i> Re-run test
+          </button>
+          <p className="ra-muted" style={{ fontSize: '0.72rem' }}>
+            Simulated parse based on the known ATS failure classes — not a live run of any vendor's parser.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Feature 2: make the live company research visible so the applicant can see WHY
 // the AI phrased things the way it did (recent news, culture, tech stack all feed tailoring).
 function ResearchPanel({ resume }) {
@@ -672,6 +768,7 @@ export default function ResumeEditor({
         {reindexMsg && <div className="ra-reindex-msg"><i className="fas fa-brain"></i> {reindexMsg}</div>}
         <ResearchPanel resume={resume} />
         <AtsGauge resume={resume} onApplyGap={applyGap} />
+        <AtsParsePanel resume={resume} />
 
         {coherence?.length > 0 && (
           <div className="ra-coherence-panel">

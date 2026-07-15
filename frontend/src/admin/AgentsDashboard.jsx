@@ -18,14 +18,6 @@ const AGENTS = [
     color: '#8b5cf6'
   },
   {
-    id: 'autoapply',
-    label: 'Auto-Apply',
-    icon: 'fas fa-wand-magic-sparkles',
-    description: 'Auto-fills TNP Google Forms from your saved details and resume, with a per-field confidence score. Everything is staged for your review — nothing submits without approval.',
-    path: '/admin/agents/autoapply',
-    color: '#0ea5e9'
-  },
-  {
     id: 'resume',
     label: 'Resume Generator',
     icon: 'fas fa-file-invoice',

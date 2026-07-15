@@ -30,13 +30,4 @@ const emailSchema = new mongoose.Schema({
   followUpNote:   { type: String, default: '' }
 }, { timestamps: true });
 
-// After any email is saved, stage an Auto-Apply JobPosting if it's TNP mail with a
-// Google Form link. Fire-and-forget: this must never block or fail a mail save, so
-// errors are swallowed. Required inline to avoid a circular model dependency.
-emailSchema.post('save', function (doc) {
-  require('../utils/jobPostingSync')
-    .syncJobPostingFromEmail(doc)
-    .catch(() => { /* staging is best-effort; ignore failures */ });
-});
-
 module.exports = mongoose.model('Email', emailSchema);
