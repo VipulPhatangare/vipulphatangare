@@ -1,9 +1,7 @@
-const { GoogleGenerativeAI } = require('@google/generative-ai');
 const Skill = require('../models/Skill');
 const Education = require('../models/Education');
 const EmailAgentConfig = require('../models/EmailAgentConfig');
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const { generateText, resolveModel } = require('./llm');
 
 // Only mail from a trusted TNP (Training & Placement) sender gets AI-analysed —
 // everything else is saved to the inbox as-is. The sender list is configurable in the DB.
@@ -114,23 +112,31 @@ Rules:
 - Be direct and practical, like a smart assistant briefing you
 - If inbox is empty or low-priority only, say so clearly`;
 
-// opts: { candidateContext, guidance } — both optional; loaded on demand if omitted.
+// Resolves the model id the email agent should use (its configured modelName,
+// falling back to the global default). Optionally short-circuited via opts.modelName.
+async function getEmailModelId(explicit) {
+  if (explicit) return resolveModel(explicit);
+  const config = await getEmailAgentConfig();
+  return resolveModel(config.modelName);
+}
+
+// opts: { candidateContext, guidance, modelName } — all optional; loaded on demand if omitted.
 async function analyzeEmail(subject, body, opts = {}) {
   // Back-compat: a plain string 3rd arg used to be candidateContext.
   const options = typeof opts === 'string' ? { candidateContext: opts } : (opts || {});
   const context  = options.candidateContext || await getCandidateContext();
   const guidance = options.guidance;
-
-  const model = genAI.getGenerativeModel({
-    model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
-    systemInstruction: buildAnalyzeSystem(context, guidance),
-    generationConfig: { maxOutputTokens: 1024, temperature: 0.3 }
-  });
+  const modelId  = await getEmailModelId(options.modelName);
 
   const prompt = `Subject: ${subject}\n\nBody:\n${body}`;
-  const result = await model.generateContent(prompt);
-  let raw = result.response.text().trim();
-  raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  const raw = await generateText({
+    modelId,
+    system: buildAnalyzeSystem(context, guidance),
+    prompt,
+    temperature: 0.3,
+    maxTokens: 1024,
+    json: true
+  });
 
   try {
     const parsed = JSON.parse(raw);
@@ -158,23 +164,13 @@ async function analyzeEmail(subject, body, opts = {}) {
 }
 
 async function generateReply(subject, body) {
-  const model = genAI.getGenerativeModel({
-    model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
-    systemInstruction: REPLY_SYSTEM,
-    generationConfig: { maxOutputTokens: 512, temperature: 0.6 }
-  });
-
+  const modelId = await getEmailModelId();
   const prompt = `Original Email\nSubject: ${subject}\nBody:\n${body}\n\nWrite a reply:`;
-  const result = await model.generateContent(prompt);
-  return result.response.text().trim();
+  return generateText({ modelId, system: REPLY_SYSTEM, prompt, temperature: 0.6, maxTokens: 512 });
 }
 
 async function generateDigest(emails) {
-  const model = genAI.getGenerativeModel({
-    model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
-    systemInstruction: DIGEST_SYSTEM,
-    generationConfig: { maxOutputTokens: 600, temperature: 0.4 }
-  });
+  const modelId = await getEmailModelId();
 
   const emailList = emails.map((e, i) =>
     `${i + 1}. [${(e.priority || 'medium').toUpperCase()}] "${e.subject}" from ${e.from || 'unknown'}` +
@@ -184,8 +180,7 @@ async function generateDigest(emails) {
   ).join('\n');
 
   const prompt = `Unread emails (${emails.length} total):\n${emailList}\n\nGenerate the daily digest:`;
-  const result = await model.generateContent(prompt);
-  return result.response.text().trim();
+  return generateText({ modelId, system: DIGEST_SYSTEM, prompt, temperature: 0.4, maxTokens: 600 });
 }
 
 module.exports = {

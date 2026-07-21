@@ -30,6 +30,7 @@ app.use('/api/todos',      require('./routes/todos'));
 app.use('/api/education',  require('./routes/education'));
 app.use('/api/experience', require('./routes/experience'));
 app.use('/api/resume-agent', require('./routes/resumeAgent'));
+app.use('/api/models',     require('./routes/models'));
 
 // Serve static files (profile image)
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));

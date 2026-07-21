@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '../../api/axios.js';
+import ModelSelect from '../ModelSelect.jsx';
 
 // ── HELPERS ─────────────────────────────────────────────
 
@@ -1503,6 +1504,16 @@ function SettingsTab({ flash }) {
 
   return (
     <div className="chatbot-panel">
+      {/* AI model */}
+      <div className="stat-card" style={{ marginBottom: '1rem' }}>
+        <h3 className="chatbot-section-title"><i className="fas fa-microchip"></i> AI Model</h3>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.83rem', margin: '0 0 1rem' }}>
+          Model used to analyse mail, draft replies and build the digest. Manage all
+          models in the Model Management tab.
+        </p>
+        <ModelSelect feature="email" />
+      </div>
+
       {/* Trusted senders */}
       <div className="stat-card" style={{ marginBottom: '1rem' }}>
         <h3 className="chatbot-section-title"><i className="fas fa-user-shield"></i> Trusted TNP Senders</h3>

@@ -4,6 +4,7 @@ import api from '../api/axios.js';
 import useSidebarCollapsed from './useSidebarCollapsed.js';
 import DashboardHome   from './DashboardHome.jsx';
 import ManageChatbot   from './ManageChatbot.jsx';
+import ManageModels    from './ManageModels.jsx';
 import ManageApiKeys   from './ManageApiKeys.jsx';
 import AgentsLayout    from './AgentsLayout.jsx';
 import ManagePrompts   from './ManagePrompts.jsx';
@@ -16,6 +17,7 @@ const NAV = [
   { path: '/admin',            label: 'Dashboard',    icon: 'fas fa-tachometer-alt', exact: true },
   { path: '/admin/portfolio',  label: 'Portfolio',    icon: 'fas fa-briefcase' },
   { path: '/admin/chatbot',    label: 'AI Chatbot',   icon: 'fas fa-robot' },
+  { path: '/admin/models',     label: 'Model Management', icon: 'fas fa-microchip' },
   { path: '/admin/apikeys',    label: 'API Keys',     icon: 'fas fa-key' },
   { path: '/admin/agents',     label: 'My Agents',    icon: 'fas fa-brain' },
   { path: '/admin/prompts',    label: 'Prompt Saver', icon: 'fas fa-scroll' },
@@ -122,6 +124,7 @@ export default function AdminDashboard() {
           <Route path="/"             element={<DashboardHome />} />
           <Route path="/portfolio/*"  element={<PortfolioLayout />} />
           <Route path="/chatbot"      element={<ManageChatbot />} />
+          <Route path="/models"       element={<ManageModels />} />
           <Route path="/apikeys"      element={<ManageApiKeys />} />
           <Route path="/agents/*"     element={<AgentsLayout />} />
           <Route path="/prompts"      element={<ManagePrompts />} />

@@ -1,20 +1,10 @@
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const { generateText, resolveModel } = require('./llm');
 
 // history: array of { role: 'user'|'model', parts: [{ text }] }, oldest first
 async function generateResponse(userMessage, chunks, projects = [], config, history = []) {
   const { systemPrompt, modelName, maxTokens } = config;
 
-  const model = genAI.getGenerativeModel({
-    model: modelName || process.env.GEMINI_MODEL || 'gemini-2.5-flash',
-    systemInstruction: systemPrompt,
-    generationConfig: {
-      maxOutputTokens: maxTokens,
-      temperature: 0.2,
-      responseMimeType: 'application/json'
-    }
-  });
+  const resolvedModel = await resolveModel(modelName);
 
   // Build context block
   const contextParts = [];
@@ -37,11 +27,16 @@ async function generateResponse(userMessage, chunks, projects = [], config, hist
     ? contextParts.join('\n\n===\n\n')
     : '(No direct context found — use conversation history if available)';
 
-  const chat = model.startChat({ history });
-
   const prompt = `CONTEXT:\n${contextBlock}\n\nQUESTION: ${userMessage}`;
-  const result = await chat.sendMessage(prompt);
-  const raw = result.response.text().trim();
+  const raw = await generateText({
+    modelId: resolvedModel,
+    system: systemPrompt,
+    prompt,
+    history,
+    temperature: 0.2,
+    maxTokens,
+    json: true
+  });
 
   let structured;
   try {
@@ -59,7 +54,7 @@ async function generateResponse(userMessage, chunks, projects = [], config, hist
       sourceLabel: c.sourceLabel || 'Knowledge Base',
       score: Math.round((c.score || 0) * 1000) / 1000
     })),
-    model: modelName,
+    model: resolvedModel,
     rawText: raw
   };
 }

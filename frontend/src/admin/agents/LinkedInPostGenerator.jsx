@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '../../api/axios.js';
+import ModelSelect from '../ModelSelect.jsx';
 
 const FACTORY_PROMPT = `You are an expert LinkedIn Content Strategist, Personal Branding Specialist, and Professional Copywriter. Your task is to generate modular LinkedIn content components by leveraging information retrieved from the user's portfolio knowledge base.
 
@@ -215,7 +216,9 @@ export default function LinkedInPostGenerator() {
     e.preventDefault();
     setSavingConfig(true);
     try {
-      const { data } = await api.put('/agents/linkedin/config', config);
+      // modelName is owned by the Model Management dropdown (/api/models).
+      const { modelName, ...rest } = config;
+      const { data } = await api.put('/agents/linkedin/config', rest);
       setConfig({ ...DEFAULT_CONFIG, ...data });
       flash('success', 'Agent configuration saved');
     } catch {
@@ -840,14 +843,11 @@ export default function LinkedInPostGenerator() {
 
               <div className="chatbot-config-grid">
                 <div className="form-group">
-                  <label>Model Name</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    value={config.modelName}
-                    onChange={e => setConfig(c => ({ ...c, modelName: e.target.value }))}
+                  <ModelSelect
+                    feature="linkedin"
+                    label="Model"
+                    hint="Model used to generate LinkedIn content. Manage all models in the Model Management tab."
                   />
-                  <span className="form-hint">e.g. gemini-2.5-flash, gemini-2.0-flash</span>
                 </div>
 
                 <div className="form-group">

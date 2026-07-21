@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '../api/axios.js';
 import ConfirmModal from './ConfirmModal.jsx';
+import ModelSelect from './ModelSelect.jsx';
 
 const DEFAULT_CONFIG = {
   systemPrompt: '',
@@ -108,7 +109,10 @@ export default function ManageChatbot() {
     e.preventDefault();
     setSavingConfig(true);
     try {
-      const { data } = await api.put('/chatbot/config', config);
+      // modelName is owned by the Model Management dropdown (/api/models) — don't
+      // send it here or we'd clobber a change made there.
+      const { modelName, ...rest } = config;
+      const { data } = await api.put('/chatbot/config', rest);
       setConfig({ ...DEFAULT_CONFIG, ...data });
       flash('success', 'Configuration saved');
     } catch { flash('error', 'Failed to save config'); }
@@ -313,14 +317,11 @@ export default function ManageChatbot() {
 
               <div className="chatbot-config-grid">
                 <div className="form-group">
-                  <label>Model Name</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    value={config.modelName}
-                    onChange={e => setConfig(c => ({ ...c, modelName: e.target.value }))}
+                  <ModelSelect
+                    feature="chatbot"
+                    label="Model"
+                    hint="Which model answers chatbot questions. Manage all models in the Model Management tab."
                   />
-                  <span className="form-hint">e.g. gemini-2.5-flash, gemini-2.0-flash</span>
                 </div>
 
                 <div className="form-group">

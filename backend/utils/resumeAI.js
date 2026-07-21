@@ -1,8 +1,11 @@
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { generateJSON, resolveModel } = require('./llm');
+const ResumeAgentConfig = require('../models/ResumeAgentConfig');
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-
-const MODEL = () => process.env.RESUME_MODEL || 'gemini-2.5-flash';
+// Resolves the resume agent's configured model (or the global default).
+async function resumeModelId() {
+  const config = await ResumeAgentConfig.getConfig();
+  return resolveModel(config.modelName);
+}
 
 const TONE_INSTRUCTIONS = {
   formal: 'Formal and professional — precise, achievement-oriented, no slang, third-person-free resume voice.',
@@ -186,75 +189,12 @@ function refineSchemaFor(sectionKey) {
   return SCHEMAS.items;
 }
 
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-
-// Best-effort repair of JSON that got cut off mid-response (gemini-2.5-flash can
-// truncate when its "thinking" tokens eat into the output budget). We close any
-// dangling string, then close open brackets/braces in the right order. Returns a
-// parsed object on success, or null if it still isn't valid.
-function tryParseTruncatedJSON(raw) {
-  try { return JSON.parse(raw); } catch { /* fall through to repair */ }
-
-  let s = raw;
-  // Drop a trailing partial token after the last comma (e.g. `, "ke`) so we don't
-  // leave a half-written key/value that can't be closed.
-  const lastComma = s.lastIndexOf(',');
-  const lastClose = Math.max(s.lastIndexOf('}'), s.lastIndexOf(']'));
-  if (lastComma > lastClose) s = s.slice(0, lastComma);
-
-  // Walk the string tracking structure; if we end inside a string, close it.
-  const stack = [];
-  let inStr = false, escaped = false;
-  for (let i = 0; i < s.length; i++) {
-    const c = s[i];
-    if (inStr) {
-      if (escaped) escaped = false;
-      else if (c === '\\') escaped = true;
-      else if (c === '"') inStr = false;
-      continue;
-    }
-    if (c === '"') inStr = true;
-    else if (c === '{' || c === '[') stack.push(c);
-    else if (c === '}' || c === ']') stack.pop();
-  }
-  if (inStr) s += '"';
-  while (stack.length) s += stack.pop() === '{' ? '}' : ']';
-
-  try { return JSON.parse(s); } catch { return null; }
-}
-
-// Shared Gemini JSON call with structured output, fence-stripping, a truncated-JSON
-// repair fallback, and backoff retries (503s from model overload are common and
-// usually clear in seconds). Default token budget is generous so the model's
-// thinking tokens don't crowd out the actual JSON payload.
+// Shared JSON call: resolves the resume agent's model, then delegates to the
+// unified LLM helper (which handles structured output on Gemini, json_object on
+// NVIDIA/DeepSeek/Kimi, fence-stripping, truncated-JSON repair and backoff retries).
 async function callGeminiJSON(prompt, { systemInstruction = '', temperature = 0.6, maxTokens = 16384, responseSchema = null } = {}) {
-  let lastErr;
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      const model = genAI.getGenerativeModel({
-        model: MODEL(),
-        ...(systemInstruction ? { systemInstruction } : {}),
-        generationConfig: {
-          maxOutputTokens: maxTokens,
-          temperature,
-          responseMimeType: 'application/json',
-          ...(responseSchema ? { responseSchema } : {})
-        }
-      });
-      const result = await model.generateContent(prompt);
-      let raw = (result.response.text() || '').trim();
-      raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
-
-      const parsed = tryParseTruncatedJSON(raw);
-      if (parsed !== null) return parsed;
-      throw new Error('Unparseable JSON from model (even after repair)');
-    } catch (err) {
-      lastErr = err;
-      console.warn(`[resumeAI] Gemini call attempt ${attempt} failed:`, err.message);
-      if (attempt < 3) await sleep(attempt * 2000); // 2s, then 4s
-    }
-  }
-  throw new Error(`Gemini JSON call failed: ${lastErr.message}`);
+  const modelId = await resumeModelId();
+  return generateJSON({ modelId, system: systemInstruction, prompt, temperature, maxTokens, responseSchema });
 }
 
 const SYSTEM_PROMPT = `You are an expert resume writer, ATS optimization specialist and career coach.

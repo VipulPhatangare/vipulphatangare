@@ -30,7 +30,9 @@ const emailAgentConfigSchema = new mongoose.Schema({
   // Senders whose mail gets AI-analysed. Everything else is fetched straight to the inbox.
   trustedSenders:   { type: [String], default: ['srawandale@gmail.com'] },
   // Editable analysis guidance (see note above).
-  analysisGuidance: { type: String, default: DEFAULT_GUIDANCE }
+  analysisGuidance: { type: String, default: DEFAULT_GUIDANCE },
+  // AI model for analysis/reply/digest — a concrete model id or 'inherit' (global default).
+  modelName:        { type: String, default: 'inherit' }
 }, { timestamps: true });
 
 const EmailAgentConfig = mongoose.model('EmailAgentConfig', emailAgentConfigSchema);

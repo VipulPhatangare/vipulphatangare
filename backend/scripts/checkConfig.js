@@ -19,7 +19,16 @@ function checkGeminiConfig() {
   ok(`GEMINI_MODEL=${process.env.GEMINI_MODEL || 'gemini-2.5-flash (default)'}`);
 }
 
+function checkNvidiaConfig() {
+  if (!process.env.NVIDIA_API_KEY) {
+    fail('NVIDIA_API_KEY is not set (required for DeepSeek/Kimi models)');
+  } else {
+    ok('NVIDIA_API_KEY is set');
+  }
+}
+
 checkGeminiConfig();
+checkNvidiaConfig();
 
 if (process.exitCode) {
   console.error('\nConfig check failed.');

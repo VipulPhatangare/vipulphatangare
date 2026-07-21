@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { RESUME_TEMPLATES, FONT_OPTIONS, COLOR_PRESETS } from './templates.js';
+import ModelSelect from '../../ModelSelect.jsx';
 
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 
@@ -185,12 +186,24 @@ export default function SettingsModal({ resume, profile, onPrefChange, onProfile
           <button className={tab === 'contact' ? 'active' : ''} onClick={() => setTab('contact')}>
             <i className="fas fa-address-card"></i> Contact Info
           </button>
+          <button className={tab === 'model' ? 'active' : ''} onClick={() => setTab('model')}>
+            <i className="fas fa-microchip"></i> Model
+          </button>
         </div>
 
         <div className="ra-settings-body">
-          {tab === 'design'
-            ? <DesignTab resume={resume} onPrefChange={onPrefChange} />
-            : <ContactTab profile={profile} onProfileUpdate={onProfileUpdate} />}
+          {tab === 'design' && <DesignTab resume={resume} onPrefChange={onPrefChange} />}
+          {tab === 'contact' && <ContactTab profile={profile} onProfileUpdate={onProfileUpdate} />}
+          {tab === 'model' && (
+            <div className="ra-settings-section">
+              <p className="ra-muted ra-settings-hint">
+                Which AI model writes and tailors your resume sections and cover letters.
+                Defaults to the project-wide model — manage all models in the admin
+                Model Management tab.
+              </p>
+              <ModelSelect feature="resume" label="Resume model" />
+            </div>
+          )}
         </div>
       </div>
     </div>

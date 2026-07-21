@@ -106,7 +106,7 @@ router.post('/bulk-reanalyze', auth, async (req, res) => {
     let reanalyzed = 0;
     for (const email of emails) {
       try {
-        const analysis = await analyzeEmail(email.subject, email.body, { candidateContext, guidance: config.analysisGuidance });
+        const analysis = await analyzeEmail(email.subject, email.body, { candidateContext, guidance: config.analysisGuidance, modelName: config.modelName });
         await Email.findByIdAndUpdate(email._id, {
           summary:      analysis.summary,
           priority:     analysis.priority,
@@ -271,7 +271,7 @@ router.post('/sync-gmail', auth, async (req, res) => {
         }
 
         try {
-          const analysis = await analyzeEmail(email.subject, email.body, { candidateContext, guidance: config.analysisGuidance });
+          const analysis = await analyzeEmail(email.subject, email.body, { candidateContext, guidance: config.analysisGuidance, modelName: config.modelName });
 
           return await Email.create({
             gmailMessageId: email.gmailMessageId,
@@ -437,6 +437,7 @@ router.get('/config/settings', auth, async (req, res) => {
     res.json({
       trustedSenders:   config.trustedSenders,
       analysisGuidance: config.analysisGuidance,
+      modelName:        config.modelName || 'inherit',
       defaultGuidance:  EmailAgentConfig.DEFAULT_GUIDANCE
     });
   } catch (err) {
@@ -444,11 +445,11 @@ router.get('/config/settings', auth, async (req, res) => {
   }
 });
 
-// PUT /api/emails/config/settings  { trustedSenders?, analysisGuidance?, resetGuidance? }
+// PUT /api/emails/config/settings  { trustedSenders?, analysisGuidance?, resetGuidance?, modelName? }
 router.put('/config/settings', auth, async (req, res) => {
   try {
     const config = await getEmailAgentConfig();
-    const { trustedSenders, analysisGuidance, resetGuidance } = req.body;
+    const { trustedSenders, analysisGuidance, resetGuidance, modelName } = req.body;
 
     if (Array.isArray(trustedSenders)) {
       const cleaned = [...new Set(
@@ -463,10 +464,13 @@ router.put('/config/settings', auth, async (req, res) => {
       config.analysisGuidance = analysisGuidance.trim() || EmailAgentConfig.DEFAULT_GUIDANCE;
     }
 
+    if (typeof modelName === 'string') config.modelName = modelName.trim() || 'inherit';
+
     await config.save();
     res.json({
       trustedSenders:   config.trustedSenders,
       analysisGuidance: config.analysisGuidance,
+      modelName:        config.modelName || 'inherit',
       defaultGuidance:  EmailAgentConfig.DEFAULT_GUIDANCE
     });
   } catch (err) {
