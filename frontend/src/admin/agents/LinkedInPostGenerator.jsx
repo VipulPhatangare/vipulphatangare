@@ -23,7 +23,7 @@ Output ONLY the raw JSON object. No markdown fences, no code fences, no explanat
 
 const DEFAULT_CONFIG = {
   systemPrompt: '',
-  modelName: 'gemini-2.5-flash',
+  modelName: 'gemini-3.1-flash-lite',
   maxTokens: 8192,
   topK: 8
 };
@@ -859,7 +859,7 @@ export default function LinkedInPostGenerator() {
                     value={config.maxTokens}
                     onChange={e => setConfig(c => ({ ...c, maxTokens: Number(e.target.value) }))}
                   />
-                  <span className="form-hint">gemini-2.5-flash supports up to 65,536 (default: 8192)</span>
+                  <span className="form-hint">gemini-3.1-flash-lite supports up to 65,536 (default: 8192)</span>
                 </div>
 
                 <div className="form-group">

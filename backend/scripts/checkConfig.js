@@ -16,7 +16,7 @@ function checkGeminiConfig() {
     ok('GEMINI_API_KEY is set');
   }
 
-  ok(`GEMINI_MODEL=${process.env.GEMINI_MODEL || 'gemini-2.5-flash (default)'}`);
+  ok(`GEMINI_MODEL=${process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite (default)'}`);
 }
 
 function checkNvidiaConfig() {

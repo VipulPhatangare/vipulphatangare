@@ -25,7 +25,7 @@ export default function ManageModels() {
         </p>
         <ModelSelect
           onSaved={() => setRefreshToken(t => t + 1)}
-          hint="Applies project-wide. Available: Gemini 2.5 Flash (Google), DeepSeek V4 Flash/Pro and Kimi K2.6 (NVIDIA)."
+          hint="Applies project-wide. Available: Gemini 3.1 Flash-Lite and Gemini 2.5 Flash (Google), DeepSeek V4 Flash/Pro and Kimi K2.6 (NVIDIA)."
         />
       </div>
 

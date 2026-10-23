@@ -57,7 +57,7 @@ RESPONSE LENGTH RULE:
 
 const chatbotConfigSchema = new mongoose.Schema({
   systemPrompt: { type: String, default: DEFAULT_SYSTEM_PROMPT },
-  modelName:    { type: String, default: 'gemini-2.5-flash' },
+  modelName:    { type: String, default: 'gemini-3.1-flash-lite' },
   maxTokens:    { type: Number, default: 8192 },
   typingSpeed:  { type: Number, default: 18 },
   topK:         { type: Number, default: 8 }

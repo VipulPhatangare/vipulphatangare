@@ -5,7 +5,7 @@ import ModelSelect from './ModelSelect.jsx';
 
 const DEFAULT_CONFIG = {
   systemPrompt: '',
-  modelName: 'gemini-2.5-flash',
+  modelName: 'gemini-3.1-flash-lite',
   maxTokens: 8192,
   typingSpeed: 18,
   topK: 5

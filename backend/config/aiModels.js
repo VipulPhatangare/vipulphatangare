@@ -4,9 +4,14 @@
 // to the right provider based on the model's `provider` field.
 
 const INHERIT = 'inherit';
-const DEFAULT_MODEL = 'gemini-2.5-flash';
+const DEFAULT_MODEL = 'gemini-3.1-flash-lite';
 
 const MODELS = [
+  {
+    id: 'gemini-3.1-flash-lite',
+    label: 'Gemini 3.1 Flash-Lite',
+    provider: 'gemini'
+  },
   {
     id: 'gemini-2.5-flash',
     label: 'Gemini 2.5 Flash',

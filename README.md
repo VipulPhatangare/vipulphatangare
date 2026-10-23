@@ -62,7 +62,7 @@ Protected by JWT authentication.
 - RAG-powered: retrieves context from your portfolio knowledge base
 - Generates post titles, full post bodies, and hashtag suggestions
 - Multiple tone and length options
-- Powered by Gemini 2.5 Flash
+- Powered by Gemini 3.1 Flash-Lite
 
 ---
 
@@ -160,7 +160,7 @@ JWT_SECRET=your_jwt_secret_key
 EMAIL_USER=your_gmail@gmail.com
 EMAIL_PASS=your_gmail_app_password
 GEMINI_API_KEY=your_gemini_api_key
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-3.1-flash-lite
 ```
 
 Run `npm run check-config` to verify the Gemini API key is set up correctly.
@@ -192,7 +192,7 @@ The frontend proxies API calls to `http://localhost:7000`.
 | `EMAIL_USER` | Gmail address for IMAP sync |
 | `EMAIL_PASS` | Gmail App Password (not your account password) |
 | `GEMINI_API_KEY` | Google Gemini API key for AI features |
-| `GEMINI_MODEL` | Default Gemini model name (default: `gemini-2.5-flash`) |
+| `GEMINI_MODEL` | Default Gemini model name (default: `gemini-3.1-flash-lite`) |
 | `PORT` | Backend server port (default: 7000) |
 
 ---

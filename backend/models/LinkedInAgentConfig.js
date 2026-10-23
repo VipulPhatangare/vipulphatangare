@@ -21,7 +21,7 @@ Output ONLY the raw JSON object. No markdown fences, no code fences, no explanat
 
 const LinkedInAgentConfigSchema = new mongoose.Schema({
   systemPrompt: { type: String, default: NEW_DEFAULT_PROMPT },
-  modelName:    { type: String, default: 'gemini-2.5-flash' },
+  modelName:    { type: String, default: 'gemini-3.1-flash-lite' },
   maxTokens:    { type: Number, default: 8192 },
   topK:         { type: Number, default: 8 }
 }, { timestamps: true });
