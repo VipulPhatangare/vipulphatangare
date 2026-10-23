@@ -32,11 +32,12 @@ function nvidia() {
 }
 
 // Resolves a feature's stored modelName to a concrete model id. Empty/'inherit'
-// means "use the project-wide global default".
+// means "use the project-wide global default". Ids no longer in the registry
+// (e.g. a retired model still saved in the DB) resolve to DEFAULT_MODEL.
 async function resolveModel(explicit) {
-  if (explicit && explicit !== INHERIT) return explicit;
+  if (explicit && explicit !== INHERIT) return getModel(explicit).id;
   try {
-    return await ModelSettings.getGlobalModel();
+    return getModel(await ModelSettings.getGlobalModel()).id;
   } catch {
     return DEFAULT_MODEL;
   }
